@@ -6,6 +6,7 @@ import { parseTraitFilename, fileToDataUrl, compositeNFT, LayerImage } from "@/l
 import { HederaNetwork } from "@/lib/hederaClient";
 import { useWalletCredentials } from "@/lib/useWalletCredentials";
 import { THEMES, AppTheme, THEME_STORAGE_KEY } from "@/lib/themes";
+import { ThemeProvider, ThemeSwitcher, useTheme } from "@/components/ThemeProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface TokenConfig { name:string;symbol:string;maxSupply:number;royaltyPercent:number;royaltyCollector:string;royaltyFallbackHbar:number;keys:{admin:boolean;supply:boolean;freeze:boolean;wipe:boolean;kyc:boolean}; }
@@ -811,29 +812,18 @@ export default function CollectionPage(){
 
   function changeTheme(t:AppTheme){setTheme(t);localStorage.setItem(THEME_STORAGE_KEY,t);}
 
-  const themeCfg=THEMES.find(t=>t.id===theme)??THEMES[0];
-  const themeStyle=Object.entries(themeCfg.vars).reduce((acc,[k,v])=>({...acc,[k]:v}),{}) as React.CSSProperties;
-
   async function handleLogout(){await fetch("/api/auth",{method:"DELETE"});window.location.href="/admin/login";}
 
   return(
-    <div style={{...themeStyle,minHeight:"100vh",background:"var(--bg-primary)",color:"var(--text-primary)",fontFamily:"'DM Sans',system-ui,sans-serif"}}>
+    <ThemeProvider>
+    <div>
       {/* Header */}
       <header className="px-6 py-4 flex items-center gap-4" style={{borderBottom:"1px solid var(--border)"}}>
         <a href="/admin" className="text-sm transition-colors hover:opacity-80" style={{color:"var(--text-faint)"}}>← Admin</a>
         <div className="w-px h-4" style={{background:"var(--border)"}}/>
         <h1 className="font-semibold text-sm" style={{color:"var(--text-primary)"}}>NFT Collection Setup</h1>
         <div className="ml-auto flex items-center gap-3">
-          {/* Theme switcher */}
-          <div className="flex items-center gap-1">
-            {THEMES.map(t=>(
-              <button key={t.id} onClick={()=>changeTheme(t.id)} title={t.label}
-                className={`w-6 h-6 rounded-full border-2 transition-all ${theme===t.id?"scale-110":"opacity-60 hover:opacity-90"}`}
-                style={{borderColor:theme===t.id?"var(--border-accent)":"transparent"}}>
-                <div className={`w-full h-full rounded-full ${t.preview}`}/>
-              </button>
-            ))}
-          </div>
+          <ThemeSwitcher />
           <div className="w-px h-4" style={{background:"var(--border)"}}/>
           {walletReady
             ?<><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"/><span className="text-xs" style={{color:"rgb(52,211,153)"}}>Wallet ready · {wallet.network}</span></>
@@ -865,5 +855,6 @@ export default function CollectionPage(){
         {tab==="wallets"&&<WalletGenerator getCredentials={wallet.getCredentials} network={wallet.network}/>}
       </div>
     </div>
+    </ThemeProvider>
   );
 }

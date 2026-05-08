@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
-
 import { useState, useEffect, useCallback } from "react";
 import { Team, TierLevel } from "@/types";
 import { DEFAULT_TIERS, formatDollars } from "@/lib/tierConfig";
+import { ThemeProvider, ThemeSwitcher } from "@/components/ThemeProvider";
 
 // ─── Tier Badge ───────────────────────────────────────────────────────────────
 function TierBadge({ tier }: { tier: TierLevel }) {
@@ -197,21 +197,23 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white font-['DM_Sans',sans-serif]">
+    <ThemeProvider>
+    <div>
       {/* Header */}
-      <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
+      <header className="px-6 py-4 flex items-center justify-between" style={{borderBottom:"1px solid var(--border)"}}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center text-sm font-bold">M</div>
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center text-sm font-bold text-white">M</div>
           <div>
-            <div className="font-semibold text-sm">Minthon Admin</div>
-            <div className="text-xs text-white/40">Pediatric Cancer Fundraiser</div>
+            <div className="font-semibold text-sm" style={{color:"var(--text-primary)"}}>Minthon Admin</div>
+            <div className="text-xs" style={{color:"var(--text-faint)"}}>Pediatric Cancer Fundraiser</div>
           </div>
         </div>
-        <div className="flex items-center gap-4 text-xs text-white/50">
-          <span>{teams.length} teams</span>
+        <div className="flex items-center gap-4 text-xs">
+          <ThemeSwitcher />
+          <span style={{color:"var(--text-muted)"}}>{teams.length} teams</span>
           <span className="text-emerald-400 font-medium">{formatDollars(totalDonations)} raised</span>
           <button onClick={async()=>{await fetch("/api/auth",{method:"DELETE"});window.location.href="/admin/login";}}
-            className="px-3 py-1 rounded-lg border border-white/10 hover:border-white/20 text-white/40 hover:text-white/70 transition-all">
+            className="px-3 py-1 rounded-lg border transition-all" style={{borderColor:"var(--border)",color:"var(--text-faint)"}}>
             Logout
           </button>
         </div>
@@ -521,5 +523,6 @@ export default function AdminPage() {
         )}
       </div>
     </div>
+    </ThemeProvider>
   );
 }
