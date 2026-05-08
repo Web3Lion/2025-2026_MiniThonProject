@@ -1,189 +1,214 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getTeam, getTeamByMemberWallet, readStore } from "@/lib/store";
-import { generateTraits, traitsToAttributes, calculateRarityScore } from "@/lib/traitEngine";
-import { mintNFT, uploadMetadataToIPFS } from "@/lib/hedera";
-import { NFTMetadata, TierLevel } from "@/types";
+# Minthon 🎗️
 
-export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { action } = body;
+**Generative NFT fundraiser for pediatric cancer — built on Hedera**
 
-  switch (action) {
-    // ── Preview traits (no minting, no side effects) ──────────────────────────
-    case "preview": {
-      const { teamId } = body;
-      const team = getTeam(teamId);
-      if (!team) {
-        return NextResponse.json({ error: "Team not found" }, { status: 404 });
-      }
-      // Deterministic preview using team ID as seed
-      const traits = generateTraits(team.currentTier as TierLevel, teamId);
-      const attributes = traitsToAttributes(traits);
-      const rarityScore = calculateRarityScore(traits);
-      return NextResponse.json({ traits, attributes, rarityScore, tier: team.currentTier });
-    }
+Each student team earns a unique NFT based on how much they fundraise. Higher donation totals unlock rarer traits. Every NFT lives permanently on the Hedera blockchain.
 
-    // ── Mint NFT for a team member ────────────────────────────────────────────
-    case "mint": {
-      const { teamId, memberId, walletAddress } = body;
+---
 
-      if (!teamId || !memberId || !walletAddress) {
-        return NextResponse.json(
-          { error: "teamId, memberId, and walletAddress required" },
-          { status: 400 }
-        );
-      }
+## How It Works
 
-      const team = getTeam(teamId);
-      if (!team) {
-        return NextResponse.json({ error: "Team not found" }, { status: 404 });
-      }
+| Tier | Name | Min Donations | Guarantee |
+|------|------|--------------|-----------|
+| 1 | Common | Any | Standard traits |
+| 2 | Uncommon | $50+ | At least 1 Uncommon trait |
+| 3 | Rare | $150+ | At least 1 Rare trait |
+| 4 | Epic | $350+ | At least 1 Epic trait |
+| 5 | Legendary | $750+ | At least 1 Legendary trait |
 
-      const member = team.members.find((m) => m.id === memberId);
-      if (!member) {
-        return NextResponse.json({ error: "Member not found" }, { status: 404 });
-      }
+Each NFT has **6 trait categories**: Background, Body, Eyes, Accessory, Special, Aura.
 
-      if (member.mintedNFT) {
-        return NextResponse.json(
-          { error: "This member has already minted their NFT" },
-          { status: 409 }
-        );
-      }
+The "hero trait" (guaranteed rare slot) is randomly assigned to one category. Remaining traits are drawn from the team's tier and below, weighted by rarity.
 
-      const store = readStore();
-      if (!store.tokenId) {
-        return NextResponse.json(
-          { error: "NFT collection not yet created. Admin must set up the Hedera token first." },
-          { status: 503 }
-        );
-      }
+---
 
-      // 1. Generate traits (fresh random — not seeded)
-      const traits = generateTraits(team.currentTier as TierLevel);
-      const attributes = traitsToAttributes(traits);
-      const rarityScore = calculateRarityScore(traits);
+## Quick Start
 
-      // 2. Build HIP-412 metadata
-      const metadata: NFTMetadata = {
-        name: `${store.collectionName} #${Date.now()}`,
-        description: `This NFT was earned by ${team.name} for raising funds to support children with pediatric cancer. Thank you for making a difference.`,
-        image: "ipfs://placeholder", // Updated after IPFS upload
-        edition: Math.floor(Math.random() * 9999),
-        attributes,
-        properties: {
-          team: team.name,
-          teamId: team.id,
-          donationTotal: team.donationTotal,
-          mintedAt: new Date().toISOString(),
-          highestTier: team.currentTier as TierLevel,
-          charity: "Pediatric Cancer Research Foundation",
-        },
-      };
+### 1. Install dependencies
+```bash
+npm install
+```
 
-      // 3. Upload metadata to IPFS
-      if (!process.env.PINATA_API_KEY || !process.env.PINATA_API_SECRET) {
-        return NextResponse.json(
-          { error: "IPFS credentials not configured (PINATA_API_KEY / PINATA_API_SECRET)" },
-          { status: 503 }
-        );
-      }
+### 2. Set up environment variables
+```bash
+cp .env.local.example .env.local
+# Edit .env.local with your credentials
+```
 
-      const ipfsResult = await uploadMetadataToIPFS(metadata, {
-        apiKey: process.env.PINATA_API_KEY,
-        apiSecret: process.env.PINATA_API_SECRET,
-      });
+### 3. Create a free Hedera testnet account
+1. Go to [portal.hedera.com](https://portal.hedera.com)
+2. Create an account → get your Account ID (`0.0.XXXXX`) and private key
+3. Add them to `.env.local`
+4. Testnet accounts come pre-loaded with test HBAR — no real money needed
 
-      if (!ipfsResult.success || !ipfsResult.ipfsUri) {
-        return NextResponse.json(
-          { error: `IPFS upload failed: ${ipfsResult.error}` },
-          { status: 502 }
-        );
-      }
+### 4. Set up Pinata (IPFS storage)
+1. Go to [pinata.cloud](https://pinata.cloud) — free tier works
+2. Create API keys → add to `.env.local`
 
-      metadata.image = ipfsResult.ipfsUri;
+### 5. Add your NFT artwork
+Place trait images in `/public/traits/{category}/` matching the filenames in `src/lib/tierConfig.ts`:
+```
+public/
+  traits/
+    background/  sky-blue.png, sunset.png, aurora.png ...
+    body/        hoodie.png, jersey.png, superhero.png ...
+    eyes/        bright.png, starry.png, glowing.png ...
+    accessory/   ribbon.png, trophy.png, crown.png ...
+    special/     sparkle.png, lightning.png, big-bang.png ...
+    aura/        warm-glow.png, radiant.png, transcendent.png ...
+```
 
-      // 4. Mint on Hedera
-      if (!process.env.HEDERA_TREASURY_ID || !process.env.HEDERA_TREASURY_KEY) {
-        return NextResponse.json(
-          { error: "Hedera credentials not configured" },
-          { status: 503 }
-        );
-      }
+### 6. Run the dev server
+```bash
+npm run dev
+# Open http://localhost:3000
+```
 
-      const mintResult = await mintNFT(
-        {
-          network: (process.env.HEDERA_NETWORK as "testnet" | "mainnet") ?? "testnet",
-          treasuryAccountId: process.env.HEDERA_TREASURY_ID,
-          treasuryPrivateKey: process.env.HEDERA_TREASURY_KEY,
-          tokenId: store.tokenId,
-        },
-        walletAddress,
-        ipfsResult.ipfsUri
-      );
+---
 
-      if (!mintResult.success || !mintResult.serialNumber) {
-        return NextResponse.json(
-          { error: `Hedera mint failed: ${mintResult.error}` },
-          { status: 502 }
-        );
-      }
+## Workflow
 
-      // 5. Record mint in store
-      const { writeStore } = await import("@/lib/store");
-      const freshStore = (await import("@/lib/store")).readStore();
-      const freshTeam = freshStore.teams.find((t) => t.id === teamId);
-      const freshMember = freshTeam?.members.find((m) => m.id === memberId);
-      if (freshMember) {
-        freshMember.mintedNFT = {
-          serialNumber: mintResult.serialNumber,
-          tokenId: store.tokenId,
-          transactionId: mintResult.transactionId ?? "",
-          metadata,
-          mintedAt: new Date().toISOString(),
-          walletAddress,
-        };
-        writeStore(freshStore);
-      }
+### For the teacher (admin)
 
-      return NextResponse.json({
-        success: true,
-        serialNumber: mintResult.serialNumber,
-        transactionId: mintResult.transactionId,
-        ipfsUri: ipfsResult.ipfsUri,
-        traits,
-        attributes,
-        rarityScore,
-        metadata,
-      });
-    }
+1. Go to `/admin`
+2. **Create teams** — one per student team
+3. **Add members** — enter each student's name and Hedera wallet address
+4. **Record donations** as they come in — the tier updates automatically
+5. **Preview NFTs** to see what traits a team will get before minting
+6. When ready, students go to `/mint` to claim their NFTs
 
-    // ── Lookup by wallet address (student dashboard) ──────────────────────────
-    case "lookup_wallet": {
-      const { walletAddress } = body;
-      const team = getTeamByMemberWallet(walletAddress);
-      if (!team) {
-        return NextResponse.json({ team: null });
-      }
-      const member = team.members.find((m) => m.walletAddress === walletAddress);
-      return NextResponse.json({ team, member });
-    }
+### For students
 
-    // ── Record a mint completed client-side (batch mint) ─────────────────────
-    case "record_mint": {
-      const { teamId, memberId, serialNumber, transactionId, tokenId, metadata, walletAddress } = body;
-      const { readStore, writeStore } = await import("@/lib/store");
-      const store = readStore();
-      const team = store.teams.find((t) => t.id === teamId);
-      const member = team?.members.find((m) => m.id === memberId);
-      if (member) {
-        member.mintedNFT = { serialNumber, transactionId, tokenId, metadata, mintedAt: new Date().toISOString(), walletAddress };
-        writeStore(store);
-      }
-      return NextResponse.json({ success: true });
-    }
+1. Install [HashPack wallet](https://www.hashpack.app) (free Chrome extension or mobile app)
+2. Create a Hedera account in HashPack
+3. Give your Account ID (format: `0.0.12345`) to your teacher
+4. Go to `/mint`, enter your Account ID
+5. Preview your NFT traits, then click "Mint"
+6. Your NFT arrives in your HashPack wallet in ~3 seconds
 
-    default:
-      return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+---
+
+## Creating the NFT Collection (One-Time Setup)
+
+Before anyone can mint, the teacher needs to create the Hedera HTS token (the NFT collection). Add this script to your project:
+
+```typescript
+// scripts/createCollection.ts
+import { createNFTCollection } from "../src/lib/hedera";
+import { setTokenId } from "../src/lib/store";
+
+async function main() {
+  const result = await createNFTCollection(
+    {
+      network: "testnet",
+      treasuryAccountId: process.env.HEDERA_TREASURY_ID!,
+      treasuryPrivateKey: process.env.HEDERA_TREASURY_KEY!,
+    },
+    "Minthon 2025 — Cure Kids Cancer",
+    "MNTH25",
+    500 // max NFTs
+  );
+
+  if (result.success) {
+    console.log("Token ID:", result.tokenId);
+    setTokenId(result.tokenId!);
+  } else {
+    console.error("Failed:", result.error);
   }
 }
+
+main();
+```
+
+Run with: `npx ts-node scripts/createCollection.ts`
+
+Then paste the Token ID into the Admin → Settings page.
+
+---
+
+## Customizing Tiers
+
+Edit `src/lib/tierConfig.ts`:
+
+```typescript
+export const DEFAULT_TIERS: Tier[] = [
+  { level: 1, label: "Common",     minDonation: 0,      ... },
+  { level: 2, label: "Uncommon",   minDonation: 5000,   ... }, // $50
+  { level: 3, label: "Rare",       minDonation: 15000,  ... }, // $150
+  { level: 4, label: "Epic",       minDonation: 35000,  ... }, // $350
+  { level: 5, label: "Legendary",  minDonation: 75000,  ... }, // $750
+];
+```
+
+All amounts are in **cents** (avoids float issues). `5000` = $50.
+
+---
+
+## Customizing Traits
+
+Add/remove traits in the `TRAIT_POOL` array in `tierConfig.ts`. Each trait needs:
+- `id` — unique string
+- `name` — display name on the NFT
+- `category` — one of: background, body, eyes, accessory, special, aura
+- `tier` — 1–5
+- `imageFile` — filename in `/public/traits/{category}/`
+- `weight` — relative likelihood within the tier (higher = more common)
+
+---
+
+## Project Structure
+
+```
+src/
+  app/
+    page.tsx          ← Landing page
+    admin/page.tsx    ← Teacher dashboard
+    mint/page.tsx     ← Student mint page
+    api/
+      teams/          ← Team & member management
+      donations/      ← Donation recording
+      mint/           ← NFT preview & minting
+  lib/
+    tierConfig.ts     ← Tier thresholds & trait pool
+    traitEngine.ts    ← Generative trait selection algorithm
+    hedera.ts         ← Hedera HTS & Pinata integration
+    store.ts          ← Data persistence
+  types/
+    index.ts          ← All TypeScript types
+data/
+  store.json          ← Auto-created, stores all team/donation data
+public/
+  traits/             ← Your NFT artwork goes here
+```
+
+---
+
+## Deployment
+
+### Vercel (recommended, free)
+```bash
+npm install -g vercel
+vercel
+# Follow prompts, add env vars in Vercel dashboard
+```
+
+### Important for production
+- Switch `HEDERA_NETWORK=mainnet` when ready for real HBAR
+- Replace `data/store.json` with a real database (Supabase is free and easy)
+- Add authentication to `/admin` (NextAuth.js works well)
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 14, TypeScript, Tailwind CSS |
+| Blockchain | Hedera Hashgraph (HTS — Hedera Token Service) |
+| NFT Standard | HIP-412 (Hedera Improvement Proposal) |
+| Storage | IPFS via Pinata |
+| Wallet | HashPack (browser extension + mobile) |
+
+---
+
+*Built with ❤️ for children with pediatric cancer.*
