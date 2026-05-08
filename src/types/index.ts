@@ -4,29 +4,31 @@ export type TierLevel = 1 | 2 | 3 | 4 | 5;
 export interface Tier {
   level: TierLevel;
   name: string;
-  label: string; // "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary"
-  minDonation: number; // USD cents to avoid float issues
-  color: string; // tailwind color class
+  label: string;
+  minDonation: number;
+  color: string;
   hexColor: string;
   description: string;
 }
 
 // ─── Traits ───────────────────────────────────────────────────────────────────
-export type TraitCategory =
-  | "background"
-  | "body"
-  | "eyes"
-  | "accessory"
-  | "special"
-  | "aura";
+export type TraitCategory = string; // flexible — admin defines layer names
 
 export interface TraitOption {
   id: string;
   name: string;
   category: TraitCategory;
   tier: TierLevel;
-  imageFile: string; // filename in /public/traits/{category}/
-  weight: number; // relative weight within tier (higher = more common within tier)
+  imageFile: string;
+  weight: number;
+}
+
+// ─── Layer definition (admin-configured) ─────────────────────────────────────
+export interface LayerDefinition {
+  id: string;
+  name: string;       // display name e.g. "Background"
+  order: number;      // 1 = bottom, 6 = top
+  required: boolean;  // if true, every NFT must have this layer
 }
 
 // ─── NFT Metadata (HIP-412 compatible) ────────────────────────────────────────
@@ -40,24 +42,17 @@ export interface NFTAttribute {
 export interface NFTMetadata {
   name: string;
   description: string;
-  image: string; // IPFS URI
+  image: string;
   edition: number;
   attributes: NFTAttribute[];
-  properties: {
-    team: string;
-    teamId: string;
-    donationTotal: number; // in cents
-    mintedAt: string; // ISO timestamp
-    highestTier: TierLevel;
-    charity: string;
-  };
+  properties: Record<string, unknown>;
 }
 
 // ─── Teams ────────────────────────────────────────────────────────────────────
 export interface TeamMember {
   id: string;
   name: string;
-  walletAddress?: string; // Hedera account ID e.g. "0.0.12345"
+  walletAddress?: string;
   mintedNFT?: MintRecord;
 }
 
@@ -65,7 +60,7 @@ export interface Team {
   id: string;
   name: string;
   members: TeamMember[];
-  donationTotal: number; // in cents
+  donationTotal: number;
   currentTier: TierLevel;
   donationLog: DonationEntry[];
   createdAt: string;
@@ -74,17 +69,17 @@ export interface Team {
 
 export interface DonationEntry {
   id: string;
-  amount: number; // in cents
+  amount: number;
   donor?: string;
   note?: string;
   recordedAt: string;
-  recordedBy: string; // admin
+  recordedBy: string;
 }
 
 // ─── Minting ──────────────────────────────────────────────────────────────────
 export interface MintRecord {
   serialNumber: number;
-  tokenId: string; // Hedera token ID e.g. "0.0.99999"
+  tokenId: string;
   transactionId: string;
   metadata: NFTMetadata;
   mintedAt: string;
@@ -92,21 +87,31 @@ export interface MintRecord {
 }
 
 export interface GeneratedTraits {
-  background: TraitOption;
-  body: TraitOption;
-  eyes: TraitOption;
-  accessory: TraitOption;
-  special: TraitOption;
-  aura: TraitOption;
+  [category: string]: TraitOption;
 }
+
+// ─── Student Wallet ───────────────────────────────────────────────────────────
+export interface StudentWallet {
+  studentName: string;
+  accountId: string;
+  privateKey: string;
+  publicKey: string;
+  mnemonic: string;
+  network: "testnet" | "mainnet";
+  createdAt: string;
+}
+
+// ─── App Theme ────────────────────────────────────────────────────────────────
+export type AppTheme = "dark-violet" | "dark-blue" | "light-green";
 
 // ─── Admin State ──────────────────────────────────────────────────────────────
 export interface AdminState {
   teams: Team[];
   tiers: Tier[];
   traitPool: TraitOption[];
-  tokenId: string | null; // Hedera HTS token ID for the collection
+  layers: LayerDefinition[];
+  tokenId: string | null;
   collectionName: string;
-  totalDonations: number; // aggregate in cents
+  totalDonations: number;
   lastUpdated: string;
 }

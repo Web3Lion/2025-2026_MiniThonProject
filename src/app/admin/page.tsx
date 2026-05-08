@@ -207,9 +207,13 @@ export default function AdminPage() {
             <div className="text-xs text-white/40">Pediatric Cancer Fundraiser</div>
           </div>
         </div>
-        <div className="flex items-center gap-6 text-xs text-white/50">
+        <div className="flex items-center gap-4 text-xs text-white/50">
           <span>{teams.length} teams</span>
           <span className="text-emerald-400 font-medium">{formatDollars(totalDonations)} raised</span>
+          <button onClick={async()=>{await fetch("/api/auth",{method:"DELETE"});window.location.href="/admin/login";}}
+            className="px-3 py-1 rounded-lg border border-white/10 hover:border-white/20 text-white/40 hover:text-white/70 transition-all">
+            Logout
+          </button>
         </div>
       </header>
 
