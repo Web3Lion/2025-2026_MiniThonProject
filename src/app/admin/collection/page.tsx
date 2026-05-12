@@ -36,8 +36,18 @@ function SectionHeader({step,title,subtitle}:{step:number;title:string;subtitle:
 }
 function Flash({msg}:{msg:{type:"ok"|"err"|"warn";text:string}|null}){
   if(!msg)return null;
-  const cls=msg.type==="ok"?"bg-emerald-900/50 text-emerald-300 border-emerald-700/40":msg.type==="warn"?"bg-amber-900/50 text-amber-300 border-amber-700/40":"bg-red-900/50 text-red-300 border-red-700/40";
-  return <div className={`px-4 py-2.5 rounded-lg text-sm mb-4 border ${cls}`}>{msg.text}</div>;
+  const styles:{[k:string]:React.CSSProperties}={
+    ok:  {background:"rgba(16,185,129,0.15)",border:"1.5px solid rgba(16,185,129,0.6)",color:"rgb(110,231,183)"},
+    warn:{background:"rgba(245,158,11,0.15)",border:"1.5px solid rgba(245,158,11,0.6)",color:"rgb(252,211,77)"},
+    err: {background:"rgba(239,68,68,0.15)", border:"1.5px solid rgba(239,68,68,0.6)", color:"rgb(252,165,165)"},
+  };
+  const icons={ok:"✓",warn:"⚠",err:"✗"};
+  return(
+    <div className="px-4 py-3 rounded-xl text-sm mb-4 flex items-start gap-2 font-medium" style={styles[msg.type]}>
+      <span className="shrink-0 text-base">{icons[msg.type]}</span>
+      <span>{msg.text}</span>
+    </div>
+  );
 }
 function useFlash(){
   const[msg,setMsg]=useState<{type:"ok"|"err"|"warn";text:string}|null>(null);
@@ -355,17 +365,35 @@ function TokenCreator({creds,network}:{creds:WalletCredentials|null;network:Hede
           ))}
         </div>
       </div>
-      <button onClick={handleCreate} disabled={creating}
-        className="w-full py-3.5 rounded-xl font-semibold text-white transition-all relative overflow-hidden"
-        style={{background:creating?"rgba(124,58,237,0.5)":"var(--accent-grad)",cursor:creating?"wait":"pointer"}}>
-        {creating?(
+      <button
+        onClick={handleCreate}
+        disabled={creating}
+        className="w-full py-4 rounded-xl font-bold text-white text-base transition-all relative overflow-hidden select-none"
+        style={{
+          background: creating ? "rgba(100,40,200,0.6)" : "linear-gradient(135deg,#7c3aed,#c026d3)",
+          boxShadow: creating ? "none" : "0 4px 0 #4c1d95, 0 6px 16px rgba(124,58,237,0.4)",
+          transform: creating ? "translateY(2px)" : "translateY(0)",
+          cursor: creating ? "wait" : "pointer",
+          border: "none",
+          outline: "none",
+        }}
+        onMouseDown={e=>{if(!creating)(e.currentTarget as HTMLButtonElement).style.transform="translateY(3px)";(e.currentTarget as HTMLButtonElement).style.boxShadow="0 1px 0 #4c1d95";}}
+        onMouseUp={e=>{if(!creating)(e.currentTarget as HTMLButtonElement).style.transform="translateY(0)";(e.currentTarget as HTMLButtonElement).style.boxShadow="0 4px 0 #4c1d95, 0 6px 16px rgba(124,58,237,0.4)";}}
+        onMouseLeave={e=>{if(!creating)(e.currentTarget as HTMLButtonElement).style.transform="translateY(0)";(e.currentTarget as HTMLButtonElement).style.boxShadow="0 4px 0 #4c1d95, 0 6px 16px rgba(124,58,237,0.4)";}}
+      >
+        {creating ? (
           <span className="flex items-center justify-center gap-3">
-            <span className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin"/>
+            <span className="w-5 h-5 rounded-full border-2 border-white/40 border-t-white animate-spin"/>
             Creating token on Hedera… (10–20 seconds)
           </span>
-        ):tokenId?"Re-create Collection (new token)":"Create NFT Collection on Hedera ✦"}
+        ) : tokenId ? "🔄 Re-create Collection (new token)" : "🚀 Create NFT Collection on Hedera"}
       </button>
-      {!walletReady&&<p className="text-center text-xs mt-2" style={{color:"var(--text-faint)"}}>↑ Enter wallet credentials in Step 1 to enable</p>}
+      {/* Status indicator */}
+      <div className="mt-3 p-3 rounded-xl text-xs text-center" style={{background:"rgba(0,0,0,0.2)",border:"1px solid var(--border)"}}>
+        {!walletReady
+          ? <span style={{color:"rgba(245,158,11,0.9)"}}>⚠ Enter wallet credentials in Step 1 first</span>
+          : <span style={{color:"rgb(52,211,153)"}}>✓ Ready — click the button above to create your collection on Hedera {network}</span>}
+      </div>
     </Card>
   );
 }
