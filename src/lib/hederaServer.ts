@@ -44,17 +44,58 @@ export interface MintResult {
   error?: string;
 }
 
+// ─── Parse private key — handles all Hedera key formats ──────────────────────
+// Detection logic:
+//   - DER prefix "3030" → ECDSA DER (secp256k1, used by EVM/ECDSA accounts)
+//   - DER prefix "3026" → ED25519 DER
+//   - Raw 64-char hex   → try ECDSA first (most portal accounts), then ED25519
+//   - 0x prefix         → strip and treat as raw hex
+async function parsePrivateKey(keyStr: string) {
+  const { PrivateKey } = await import("@hashgraph/sdk");
+  const key = keyStr.trim().replace(/^0x/, "");
+
+  // DER-encoded: detect type from prefix
+  if (key.startsWith("3030") || key.startsWith("3031")) {
+    // ECDSA DER (secp256k1) — used by accounts with EVM addresses
+    console.log("[Hedera] Parsing as ECDSA DER key");
+    return PrivateKey.fromStringDer(key);
+  }
+
+  if (key.startsWith("3026") || key.startsWith("302e") || key.startsWith("3027")) {
+    // ED25519 DER
+    console.log("[Hedera] Parsing as ED25519 DER key");
+    return PrivateKey.fromStringDer(key);
+  }
+
+  // Raw hex — try ECDSA first (Hedera portal accounts with EVM address use ECDSA)
+  const attempts: Array<[string, () => ReturnType<typeof PrivateKey.fromStringECDSA>]> = [
+    ["ECDSA hex",   () => PrivateKey.fromStringECDSA(key)],
+    ["ED25519 hex", () => PrivateKey.fromStringED25519(key)],
+    ["DER fallback",() => PrivateKey.fromStringDer(key)],
+    ["SDK guess",   () => PrivateKey.fromString(key)],
+  ];
+
+  for (const [label, attempt] of attempts) {
+    try {
+      const pk = attempt();
+      console.log(`[Hedera] Key parsed successfully as: ${label}`);
+      return pk;
+    } catch {
+      // try next
+    }
+  }
+  throw new Error("Could not parse private key. Use the DER Encoded Private Key from portal.hedera.com");
+}
+
 // ─── Build Hedera client from credentials ─────────────────────────────────────
 async function buildClient(creds: HederaCredentials) {
-  const { Client, AccountId, PrivateKey } = await import("@hashgraph/sdk");
+  const { Client, AccountId } = await import("@hashgraph/sdk");
   const client = creds.network === "mainnet"
     ? Client.forMainnet()
     : Client.forTestnet();
-  client.setOperator(
-    AccountId.fromString(creds.accountId),
-    PrivateKey.fromString(creds.privateKey)
-  );
-  return { client, AccountId, PrivateKey };
+  const privateKey = await parsePrivateKey(creds.privateKey);
+  client.setOperator(AccountId.fromString(creds.accountId), privateKey);
+  return { client, AccountId, privateKey };
 }
 
 // ─── Create NFT Collection ────────────────────────────────────────────────────
@@ -64,7 +105,7 @@ export async function serverCreateNFTCollection(
 ): Promise<CreateTokenResult> {
   try {
     const {
-      Client, AccountId, PrivateKey,
+      Client, AccountId,
       TokenCreateTransaction, TokenType, TokenSupplyType,
       CustomRoyaltyFee, CustomFixedFee, Hbar,
     } = await import("@hashgraph/sdk");
@@ -74,7 +115,7 @@ export async function serverCreateNFTCollection(
       : Client.forTestnet();
 
     const treasuryId = AccountId.fromString(creds.accountId);
-    const privateKey = PrivateKey.fromString(creds.privateKey);
+    const privateKey = await parsePrivateKey(creds.privateKey);
     client.setOperator(treasuryId, privateKey);
 
     // Build royalty fee if configured
@@ -145,7 +186,7 @@ export async function serverMintNFT(
 ): Promise<MintResult> {
   try {
     const {
-      Client, AccountId, PrivateKey,
+      Client, AccountId,
       TokenMintTransaction, TransferTransaction,
       TokenId, NftId,
     } = await import("@hashgraph/sdk");
@@ -155,7 +196,7 @@ export async function serverMintNFT(
       : Client.forTestnet();
 
     const treasuryId = AccountId.fromString(creds.accountId);
-    const privateKey = PrivateKey.fromString(creds.privateKey);
+    const privateKey = await parsePrivateKey(creds.privateKey);
     client.setOperator(treasuryId, privateKey);
 
     const htsTokenId   = TokenId.fromString(tokenId);

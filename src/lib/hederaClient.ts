@@ -60,13 +60,18 @@ export function isValidAccountId(id: string): boolean {
 export async function validatePrivateKey(
   privateKeyStr: string
 ): Promise<{ valid: boolean; error?: string }> {
-  try {
-    const { PrivateKey } = await import("@hashgraph/sdk");
-    PrivateKey.fromString(privateKeyStr);
-    return { valid: true };
-  } catch {
-    return { valid: false, error: "Invalid private key format" };
+  const { PrivateKey } = await import("@hashgraph/sdk");
+  const key = privateKeyStr.trim().replace(/^0x/, "");
+  const attempts = [
+    () => PrivateKey.fromStringDer(key),
+    () => PrivateKey.fromStringECDSA(key),
+    () => PrivateKey.fromStringED25519(key),
+    () => PrivateKey.fromString(key),
+  ];
+  for (const attempt of attempts) {
+    try { attempt(); return { valid: true }; } catch { /* try next */ }
   }
+  return { valid: false, error: "Invalid private key — try the DER Encoded Private Key from portal.hedera.com" };
 }
 
 /**
