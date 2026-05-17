@@ -5,6 +5,135 @@ import { Team, TierLevel } from "@/types";
 import { DEFAULT_TIERS, formatDollars } from "@/lib/tierConfig";
 import { ThemeProvider, ThemeSwitcher } from "@/components/ThemeProvider";
 
+// ─── NFT Preview Modal ────────────────────────────────────────────────────────
+const TIER_GRAD: Record<number,string> = {
+  1:"#64748b,#334155", 2:"#3b82f6,#1e3a8a", 3:"#10b981,#064e3b",
+  4:"#8b5cf6,#4c1d95", 5:"#f59e0b,#92400e",
+};
+const TIER_LABEL: Record<number,string> = {1:"Common",2:"Uncommon",3:"Rare",4:"Epic",5:"Legendary"};
+const TIER_ICON: Record<number,string> = {1:"⚪",2:"🔵",3:"💚",4:"💜",5:"⭐"};
+
+function NFTPreviewModal({teamId,teamName,tier,onClose}:{teamId:string;teamName:string;tier:TierLevel;onClose:()=>void}){
+  const[loading,setLoading]=useState(true);
+  const[attributes,setAttributes]=useState<Array<{trait_type:string;value:string;rarity_tier:number;tier_name:string}>>([]);
+  const[rarityScore,setRarityScore]=useState(0);
+  const[shuffleCount,setShuffleCount]=useState(0);
+
+  useEffect(()=>{
+    setLoading(true);
+    fetch("/api/mint",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:"preview",teamId})})
+      .then(r=>r.json())
+      .then(d=>{
+        if(d.attributes){setAttributes(d.attributes);setRarityScore(d.rarityScore??0);}
+        setLoading(false);
+      })
+      .catch(()=>setLoading(false));
+  },[teamId,shuffleCount]);
+
+  const grad=TIER_GRAD[tier]??TIER_GRAD[1];
+  const [c1,c2]=grad.split(",");
+  const BADGE:Record<number,string>={1:"bg-slate-700 text-slate-200",2:"bg-blue-800 text-blue-200",3:"bg-emerald-800 text-emerald-200",4:"bg-purple-800 text-purple-200",5:"bg-amber-700 text-amber-100"};
+
+  return(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}
+      style={{background:"rgba(0,0,0,0.85)",backdropFilter:"blur(8px)"}}>
+      <div className="w-full max-w-md rounded-2xl overflow-hidden shadow-2xl" onClick={e=>e.stopPropagation()}
+        style={{border:"2px solid rgba(124,58,237,0.5)",background:"#0f0a1a"}}>
+
+        {/* NFT Image area — generative SVG placeholder */}
+        <div className="relative aspect-square flex items-center justify-center overflow-hidden"
+          style={{background:`linear-gradient(135deg,${c1},${c2})`}}>
+          {/* Decorative radial glow */}
+          <div className="absolute inset-0" style={{background:"radial-gradient(ellipse at center,rgba(255,255,255,0.12) 0%,transparent 65%)"}}/>
+          {/* Trait layer visualisation */}
+          {!loading&&attributes.length>0?(
+            <div className="relative z-10 text-center px-6">
+              <div className="text-6xl mb-3">{TIER_ICON[tier]}</div>
+              <div className="font-black text-white text-2xl mb-1">{teamName}</div>
+              <div className="text-white/60 text-sm mb-4">{TIER_LABEL[tier]} Tier NFT</div>
+              {/* Mini trait chips */}
+              <div className="flex flex-wrap gap-1.5 justify-center">
+                {attributes.slice(0,6).map(a=>(
+                  <span key={a.trait_type} className="text-xs px-2.5 py-1 rounded-full font-medium"
+                    style={{background:"rgba(0,0,0,0.4)",color:"rgba(255,255,255,0.85)",border:"1px solid rgba(255,255,255,0.2)"}}>
+                    {a.value}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ):(
+            <div className="relative z-10 text-center">
+              {loading
+                ?<div className="w-10 h-10 rounded-full border-2 border-white/30 border-t-white animate-spin mx-auto"/>
+                :<div className="text-white/50 text-sm">No traits configured yet</div>}
+            </div>
+          )}
+          {/* Rarity score badge */}
+          {!loading&&rarityScore>0&&(
+            <div className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-bold"
+              style={{background:"rgba(0,0,0,0.6)",color:"white",border:"1px solid rgba(255,255,255,0.2)"}}>
+              ✦ {rarityScore}/100
+            </div>
+          )}
+          {/* Serial preview */}
+          <div className="absolute bottom-3 left-3 text-xs font-mono" style={{color:"rgba(255,255,255,0.35)"}}>
+            Preview — not minted
+          </div>
+        </div>
+
+        {/* Metadata section */}
+        <div className="p-5" style={{background:"rgba(255,255,255,0.03)"}}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="font-bold text-lg text-white">{teamName}</div>
+              <div className="text-sm font-semibold" style={{color: tier===5?"#f59e0b":tier===4?"#a78bfa":tier===3?"#34d399":tier===2?"#60a5fa":"#94a3b8"}}>
+                {TIER_ICON[tier]} {TIER_LABEL[tier]} Tier
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-black text-violet-400">{rarityScore}</div>
+              <div className="text-xs text-white/30">rarity score</div>
+            </div>
+          </div>
+
+          {/* Trait grid */}
+          {loading?(
+            <div className="grid grid-cols-3 gap-2">
+              {[1,2,3,4,5,6].map(i=><div key={i} className="h-14 rounded-xl animate-pulse" style={{background:"rgba(255,255,255,0.05)"}}/>)}
+            </div>
+          ):(
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {attributes.map(attr=>(
+                <div key={attr.trait_type} className="rounded-xl p-2.5" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.08)"}}>
+                  <div className="text-xs mb-1" style={{color:"rgba(255,255,255,0.35)"}}>{attr.trait_type}</div>
+                  <div className="text-xs font-semibold text-white truncate">{attr.value}</div>
+                  <span className={`mt-1 inline-block text-xs px-1.5 py-0.5 rounded-full ${BADGE[attr.rarity_tier]||BADGE[1]}`}>
+                    {attr.tier_name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button onClick={()=>setShuffleCount(s=>s+1)} disabled={loading}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium border disabled:opacity-30 transition-all"
+              style={{background:"rgba(124,58,237,0.15)",borderColor:"rgba(124,58,237,0.4)",color:"rgb(196,181,253)"}}>
+              🔀 Shuffle Traits
+            </button>
+            <button onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white transition-all"
+              style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.15)"}}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Tier Badge ───────────────────────────────────────────────────────────────
 function TierBadge({ tier }: { tier: TierLevel }) {
   const cfg = DEFAULT_TIERS[tier - 1];
@@ -53,6 +182,7 @@ export default function AdminPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTeam, setActiveTeam] = useState<string | null>(null);
+  const [previewModal, setPreviewModal] = useState<{teamId:string;teamName:string;tier:TierLevel}|null>(null);
   const [tab, setTab] = useState<"teams" | "leaderboard" | "settings">("teams");
 
   // Form state
@@ -172,19 +302,10 @@ export default function AdminPage() {
     loadTeams();
   }
 
-  async function handlePreviewNFT(teamId: string) {
-    const res = await fetch("/api/mint", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "preview", teamId }),
-    });
-    const data = await res.json();
-    if (data.traits) {
-      const traitList = data.attributes
-        .map((a: { trait_type: string; value: string; tier_name: string }) => `${a.trait_type}: ${a.value} (${a.tier_name})`)
-        .join("\n");
-      alert(`NFT Preview — Rarity Score: ${data.rarityScore}/100\n\n${traitList}`);
-    }
+  function handlePreviewNFT(teamId: string) {
+    const team = teams.find(t => t.id === teamId);
+    if(!team) return;
+    setPreviewModal({teamId, teamName: team.name, tier: team.currentTier as TierLevel});
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -239,6 +360,9 @@ export default function AdminPage() {
             </button>
           ))}
         </div>
+        <button onClick={loadTeams} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 transition-all">
+          ↻ Refresh
+        </button>
         <Link
           href="/admin/collection"
           className="flex items-center gap-2 px-4 py-2 bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/30 rounded-lg text-sm text-violet-300 transition-all"
@@ -523,6 +647,15 @@ export default function AdminPage() {
         )}
       </div>
     </div>
+      {/* NFT Preview Modal */}
+      {previewModal&&(
+        <NFTPreviewModal
+          teamId={previewModal.teamId}
+          teamName={previewModal.teamName}
+          tier={previewModal.tier}
+          onClose={()=>setPreviewModal(null)}
+        />
+      )}
     </ThemeProvider>
   );
 }
