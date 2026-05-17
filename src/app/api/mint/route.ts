@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTeam, getTeamByMemberWallet, readStore, writeStore } from "@/lib/store";
+import { getTeamByMemberWallet, readStore, writeStore } from "@/lib/store";
 import { generateTraits, traitsToAttributes, calculateRarityScore } from "@/lib/traitEngine";
 import { serverMintNFT, serverUploadImageToIPFS, serverUploadMetadataToIPFS, isValidHederaAccountId, HederaCredentials } from "@/lib/hederaServer";
 import { DEFAULT_TIERS } from "@/lib/tierConfig";
-import { TierLevel, NFTMetadata } from "@/types";
+import { TierLevel } from "@/types";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       const store = readStore();
       const team  = store.teams.find(t => t.id === teamId);
       if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
-      const categories = (store.layers ?? []).map(l => l.name.toLowerCase());
+      const categories = (store.layers ?? []).sort((a,b)=>a.order-b.order).map(l => l.name.toLowerCase());
       const traits = generateTraits(store.traitPool ?? [], categories, team.currentTier as TierLevel, teamId);
       return NextResponse.json({ traits, attributes: traitsToAttributes(traits), rarityScore: calculateRarityScore(traits), tier: team.currentTier });
     }
@@ -30,59 +30,80 @@ export async function POST(req: NextRequest) {
       if (!isValidHederaAccountId(credentials.accountId))
         return NextResponse.json({ error: "Invalid Hedera account ID" }, { status: 400 });
       if (!pinataApiKey || !pinataApiSecret)
-        return NextResponse.json({ error: "Pinata credentials required" }, { status: 400 });
+        return NextResponse.json({ error: "Pinata API key and secret required" }, { status: 400 });
 
       const store = readStore();
       if (!store.tokenId)
-        return NextResponse.json({ error: "NFT collection not created yet — complete Collection Setup first" }, { status: 503 });
+        return NextResponse.json({ error: "NFT collection not created yet — complete Collection Setup → Step 3 first" }, { status: 503 });
 
       const team = store.teams.find(t => t.id === teamId);
       if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
       const member = team.members.find(m => m.id === memberId);
       if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
-      if (member.mintedNFT) return NextResponse.json({ error: "Already minted" }, { status: 409 });
+      if (member.mintedNFT) return NextResponse.json({ error: "This member has already minted their NFT" }, { status: 409 });
 
       const creds: HederaCredentials = credentials;
       const categories = (store.layers ?? []).sort((a,b) => a.order - b.order).map(l => l.name.toLowerCase());
       const traits      = generateTraits(store.traitPool ?? [], categories, team.currentTier as TierLevel);
       const attributes  = traitsToAttributes(traits);
       const rarityScore = calculateRarityScore(traits);
+      const tierName    = DEFAULT_TIERS[(team.currentTier as number) - 1]?.label ?? "Common";
 
-      // Upload composite image to IPFS
-      let imageUri = "ipfs://no-image";
-      if (compositeImage && pinataApiKey && pinataApiSecret) {
+      // 1. Upload composite image to IPFS
+      let imageUri = "ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi"; // placeholder
+      if (compositeImage) {
         const imgResult = await serverUploadImageToIPFS(
           compositeImage,
-          `${teamId}-${memberId}.png`, pinataApiKey, pinataApiSecret
+          `minthon-${teamId}-${memberId}.png`,
+          pinataApiKey, pinataApiSecret
         );
         if (imgResult.success && imgResult.ipfsUri) imageUri = imgResult.ipfsUri;
+        else console.warn("[Mint] Image upload failed:", imgResult.error);
       }
 
-      // Build HIP-412 metadata
-      const metadata: NFTMetadata = {
-        name:        `${store.collectionName} — ${team.name}`,
-        description: `Earned by ${member.name} of ${team.name} for fundraising to support children with pediatric cancer.`,
+      // 2. Build HIP-412 compliant metadata
+      const hip412Metadata = {
+        name:        `${store.collectionName} — ${member.name}`,
+        creator:     "Minthon Pediatric Cancer Fundraiser",
+        description: `This NFT was earned by ${member.name} of team "${team.name}" through fundraising for children with pediatric cancer. Every donation made a difference.`,
         image:       imageUri,
-        edition:     Math.floor(Math.random() * 99999),
-        attributes,
+        type:        "image/png",
+        format:      "HIP412@2.0.0",
+        attributes:  attributes.map((a: { trait_type: string; value: string }) => ({
+          trait_type: a.trait_type,
+          value:      a.value,
+        })),
         properties: {
-          team: team.name, teamId: team.id, member: member.name, memberId: member.id,
-          donationTotal: team.donationTotal, tier: team.currentTier,
-          tierName: DEFAULT_TIERS[(team.currentTier as number) - 1]?.label ?? "Common",
-          rarityScore, mintedAt: new Date().toISOString(),
-          charity: "Pediatric Cancer Research Foundation", network: creds.network,
+          files: [
+            { uri: imageUri, type: "image/png", is_default_file: true }
+          ],
+          team:          team.name,
+          member:        member.name,
+          donationTotal: `$${(team.donationTotal / 100).toFixed(2)}`,
+          tier:          team.currentTier,
+          tierName,
+          rarityScore,
+          mintedAt:      new Date().toISOString(),
+          charity:       "Pediatric Cancer Research Foundation",
+          network:       creds.network,
         },
       };
 
-      const metaResult = await serverUploadMetadataToIPFS(metadata, `meta-${teamId}-${memberId}.json`, pinataApiKey, pinataApiSecret);
+      // 3. Upload metadata JSON to IPFS
+      const metaResult = await serverUploadMetadataToIPFS(
+        hip412Metadata,
+        `minthon-meta-${teamId}-${memberId}.json`,
+        pinataApiKey, pinataApiSecret
+      );
       if (!metaResult.success || !metaResult.ipfsUri)
         return NextResponse.json({ error: `Metadata upload failed: ${metaResult.error}` }, { status: 502 });
 
+      // 4. Mint on Hedera + transfer to student wallet
       const mintResult = await serverMintNFT(creds, store.tokenId, walletAddress, metaResult.ipfsUri);
       if (!mintResult.success || !mintResult.serialNumber)
         return NextResponse.json({ error: `Hedera mint failed: ${mintResult.error}` }, { status: 502 });
 
-      // Record mint
+      // 5. Record in store
       const freshStore  = readStore();
       const freshTeam   = freshStore.teams.find(t => t.id === teamId);
       const freshMember = freshTeam?.members.find(m => m.id === memberId);
@@ -91,7 +112,7 @@ export async function POST(req: NextRequest) {
           serialNumber:  mintResult.serialNumber,
           tokenId:       store.tokenId,
           transactionId: mintResult.transactionId ?? "",
-          metadata,
+          metadata:      hip412Metadata as any,
           mintedAt:      new Date().toISOString(),
           walletAddress,
         };
@@ -99,8 +120,13 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({
-        success: true, serialNumber: mintResult.serialNumber,
-        transactionId: mintResult.transactionId, imageUri, metadataUri: metaResult.ipfsUri, rarityScore,
+        success:       true,
+        serialNumber:  mintResult.serialNumber,
+        transactionId: mintResult.transactionId,
+        imageUri,
+        metadataUri:   metaResult.ipfsUri,
+        rarityScore,
+        tierName,
       });
     }
 

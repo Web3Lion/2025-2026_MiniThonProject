@@ -718,6 +718,7 @@ function TierConfig(){
 // ═══════════════════════════════════════════════════════════════════════════════
 function WalletGenerator({creds,network}:{creds:WalletCredentials|null;network:HederaNetwork}){
   const[csvContent,setCsvContent]=useState("");
+  const[initialHbar,setInitialHbar]=useState("1");
   const[generating,setGenerating]=useState(false);
   const[wallets,setWallets]=useState<Array<{studentName:string;accountId:string;privateKey:string;publicKey:string;mnemonic:string;network:string}>>([]);
   const[failed,setFailed]=useState<{name:string;error:string}[]>([]);
@@ -727,10 +728,14 @@ function WalletGenerator({creds,network}:{creds:WalletCredentials|null;network:H
   async function handleGenerate(){
     if(!creds){flash("err","Enter wallet credentials in Step 1 first");return;}
     if(!csvContent.trim()){flash("err","Upload or paste student names");return;}
+    const hbar=parseFloat(initialHbar)||1;
+    const nameCount=csvContent.trim().split("\n").filter(l=>l.trim()&&!l.toLowerCase().startsWith("name")).length;
+    const totalCost=hbar*nameCount;
+    if(totalCost>0&&!confirm(`This will create ${nameCount} wallets and send ${totalCost} HBAR total (${hbar} HBAR each) from your account. Continue?`))return;
     setGenerating(true);setWallets([]);setFailed([]);
-    const res=await fetch("/api/wallets",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"generate",csvContent,credentials:{payerAccountId:creds.accountId,payerPrivateKey:creds.privateKey,network}})});
+    const res=await fetch("/api/wallets",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"generate",csvContent,initialHbar:hbar,credentials:{payerAccountId:creds.accountId,payerPrivateKey:creds.privateKey,network}})});
     const data=await res.json();setGenerating(false);
-    if(data.success){setWallets(data.wallets??[]);setFailed(data.failed??[]);flash("ok",`${data.count} wallets created${data.failed?.length?` (${data.failed.length} failed)`:""}`);
+    if(data.success){setWallets(data.wallets??[]);setFailed(data.failed??[]);flash("ok",`${data.count} wallets created, ${data.totalHbarSpent} HBAR spent${data.failed?.length?` (${data.failed.length} failed)`:""}`);
     }else flash("err",data.error??"Wallet generation failed");
   }
   function downloadCSV(){
@@ -787,9 +792,23 @@ function WalletGenerator({creds,network}:{creds:WalletCredentials|null;network:H
         <p className="text-xs mt-2" style={{color:"var(--text-faint)"}}>Each student gets a Hedera account funded with 1 HBAR (deducted from your wallet).</p>
       </div>
       <div className="space-y-3 mb-4">
-        <button onClick={()=>fileRef.current?.click()} className="w-full px-4 py-2.5 rounded-xl text-sm border text-center transition-all"
-          style={{background:"var(--bg-card)",borderColor:"var(--border)",color:"var(--text-primary)"}}>📂 Upload CSV File</button>
-        <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFileUpload}/>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-2">
+            <button onClick={()=>fileRef.current?.click()} className="w-full px-4 py-2.5 rounded-xl text-sm border text-center transition-all"
+              style={{background:"var(--bg-card)",borderColor:"var(--border)",color:"var(--text-primary)"}}>📂 Upload CSV File</button>
+            <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFileUpload}/>
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{color:"var(--text-muted)"}}>HBAR per wallet</label>
+            <div className="flex items-center gap-1">
+              <input type="number" min="0" step="0.5" value={initialHbar} onChange={e=>setInitialHbar(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 text-sm font-mono focus:outline-none text-center"
+                style={{background:"var(--bg-card)",border:"1px solid var(--border)",color:"var(--text-primary)"}}/>
+              <span className="text-xs shrink-0" style={{color:"var(--text-faint)"}}>ℏ</span>
+            </div>
+            <p className="text-xs mt-1" style={{color:"var(--text-faint)"}}>Seed each wallet</p>
+          </div>
+        </div>
         <div><label className="text-xs mb-1 block" style={{color:"var(--text-muted)"}}>Or paste names directly</label>
           <textarea value={csvContent} onChange={e=>setCsvContent(e.target.value)} rows={5}
             placeholder={"Alice Johnson\nBob Smith\nCarla Reyes\n..."}
