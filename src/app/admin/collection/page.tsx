@@ -722,21 +722,53 @@ function WalletGenerator({creds,network}:{creds:WalletCredentials|null;network:H
   const[generating,setGenerating]=useState(false);
   const[wallets,setWallets]=useState<Array<{studentName:string;accountId:string;privateKey:string;publicKey:string;mnemonic:string;network:string}>>([]);
   const[failed,setFailed]=useState<{name:string;error:string}[]>([]);
+  const[existingTeams,setExistingTeams]=useState<Array<{id:string;name:string;memberCount:number}>>([]);
+  const[teamOverrides,setTeamOverrides]=useState<Record<string,string>>({}); // studentName → teamId | "new:Name" | "unassigned"
+  const[newTeamInputs,setNewTeamInputs]=useState<Record<string,string>>({}); // studentName → new team name text
+  const[parsedStudents,setParsedStudents]=useState<Array<{name:string;teamName:string|null}>>([]);
   const{msg,flash}=useFlash();
   const fileRef=useRef<HTMLInputElement>(null);
+
+  useEffect(()=>{
+    fetch("/api/wallets",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"get_teams"})})
+      .then(r=>r.json()).then(d=>setExistingTeams(d.teams??[])).catch(()=>{});
+  },[]);
+
+  useEffect(()=>{
+    if(!csvContent.trim()){setParsedStudents([]);return;}
+    const lines=csvContent.trim().split("\n").filter((l:string)=>l.trim()&&!l.toLowerCase().startsWith("name")&&!l.startsWith("#"));
+    const parsed=lines.map(line=>{
+      const parts=line.split(",").map((p:string)=>p.trim().replace(/^["']|["']$/g,""));
+      return{name:parts[0]??line,teamName:parts[1]||null};
+    }).filter((s:{name:string;teamName:string|null})=>s.name.length>0);
+    setParsedStudents(parsed);
+  },[csvContent]);
+
   function handleFileUpload(e:React.ChangeEvent<HTMLInputElement>){const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>setCsvContent(ev.target?.result as string);r.readAsText(f);}
+
   async function handleGenerate(){
     if(!creds){flash("err","Enter wallet credentials in Step 1 first");return;}
     if(!csvContent.trim()){flash("err","Upload or paste student names");return;}
     const hbar=parseFloat(initialHbar)||1;
-    const nameCount=csvContent.trim().split("\n").filter(l=>l.trim()&&!l.toLowerCase().startsWith("name")).length;
-    const totalCost=hbar*nameCount;
-    if(totalCost>0&&!confirm(`This will create ${nameCount} wallets and send ${totalCost} HBAR total (${hbar} HBAR each) from your account. Continue?`))return;
+    const totalCost=hbar*parsedStudents.length;
+    if(totalCost>0&&!confirm(`This will create ${parsedStudents.length} wallets and send ${totalCost} HBAR total (${hbar} HBAR each). Continue?`))return;
     setGenerating(true);setWallets([]);setFailed([]);
-    const res=await fetch("/api/wallets",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"generate",csvContent,initialHbar:hbar,credentials:{payerAccountId:creds.accountId,payerPrivateKey:creds.privateKey,network}})});
+
+    // Build final team assignments — merge CSV teams + UI overrides
+    const finalAssignments:Record<string,string>={};
+    for(const s of parsedStudents){
+      const override=teamOverrides[s.name];
+      if(override) finalAssignments[s.name]=override;
+      else if(newTeamInputs[s.name]?.trim()) finalAssignments[s.name]=`new:${newTeamInputs[s.name].trim()}`;
+    }
+
+    const res=await fetch("/api/wallets",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:"generate",csvContent,initialHbar:hbar,teamAssignments:finalAssignments,credentials:{payerAccountId:creds.accountId,payerPrivateKey:creds.privateKey,network}})});
     const data=await res.json();setGenerating(false);
-    if(data.success){setWallets(data.wallets??[]);setFailed(data.failed??[]);flash("ok",`${data.count} wallets created, ${data.totalHbarSpent} HBAR spent${data.failed?.length?` (${data.failed.length} failed)`:""}`);
-    }else flash("err",data.error??"Wallet generation failed");
+    if(data.success){
+      setWallets(data.wallets??[]);setFailed(data.failed??[]);
+      flash("ok",`✓ ${data.count} wallets created & added to teams. ${data.totalHbarSpent} HBAR spent.${data.failed?.length?` (${data.failed.length} failed)`:""}`);}
+    else flash("err",data.error??"Wallet generation failed");
   }
   function downloadCSV(){
     const header="Student Name,Account ID,Private Key,Public Key,Mnemonic,Network";
@@ -809,13 +841,56 @@ function WalletGenerator({creds,network}:{creds:WalletCredentials|null;network:H
             <p className="text-xs mt-1" style={{color:"var(--text-faint)"}}>Seed each wallet</p>
           </div>
         </div>
-        <div><label className="text-xs mb-1 block" style={{color:"var(--text-muted)"}}>Or paste names directly</label>
+        <div><label className="text-xs mb-1 block" style={{color:"var(--text-muted)"}}>Or paste names directly (Name, Team Name — team column optional)</label>
           <textarea value={csvContent} onChange={e=>setCsvContent(e.target.value)} rows={5}
-            placeholder={"Alice Johnson\nBob Smith\nCarla Reyes\n..."}
+            placeholder={"Alice Johnson, Team Alpha\nBob Smith, Team Alpha\nCarla Reyes, Team Beta\nRyan C\nBen W"}
             className="w-full rounded-xl px-4 py-3 text-sm font-mono resize-none focus:outline-none"
             style={{background:"rgba(0,0,0,0.2)",border:"1px solid var(--border)",color:"var(--text-primary)"}}/>
-          {nameCount>0&&<p className="text-xs mt-1 text-emerald-400">{nameCount} students detected</p>}
+          {parsedStudents.length>0&&<p className="text-xs mt-1 text-emerald-400">{parsedStudents.length} students detected</p>}
         </div>
+
+        {/* Team assignment table — shown when students are parsed */}
+        {parsedStudents.length>0&&(
+          <div className="rounded-xl border overflow-hidden" style={{borderColor:"var(--border)"}}>
+            <div className="px-4 py-2.5 text-xs font-medium flex items-center justify-between" style={{background:"rgba(124,58,237,0.15)",borderBottom:"1px solid var(--border)",color:"var(--text-primary)"}}>
+              <span>Team Assignment</span>
+              <span style={{color:"var(--text-faint)"}}>Students with a CSV team name are pre-assigned. Override below.</span>
+            </div>
+            <div className="divide-y max-h-64 overflow-y-auto" style={{borderColor:"var(--border)"}}>
+              {parsedStudents.map(s=>{
+                const currentOverride=teamOverrides[s.name];
+                const showNewInput=currentOverride==="new";
+                return(
+                  <div key={s.name} className="px-4 py-2.5 flex items-center gap-3" style={{background:"var(--bg-card)"}}>
+                    <span className="text-sm font-medium flex-1" style={{color:"var(--text-primary)"}}>{s.name}</span>
+                    {s.teamName&&!currentOverride&&(
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{background:"rgba(16,185,129,0.15)",color:"rgb(52,211,153)",border:"1px solid rgba(16,185,129,0.3)"}}>
+                        CSV: {s.teamName}
+                      </span>
+                    )}
+                    <select value={currentOverride||s.teamName?"existing":"unassigned"}
+                      onChange={e=>setTeamOverrides(p=>({...p,[s.name]:e.target.value}))}
+                      className="rounded-lg px-2 py-1.5 text-xs focus:outline-none cursor-pointer"
+                      style={{background:"var(--bg-card)",border:"1px solid var(--border)",color:"var(--text-primary)",minWidth:"140px"}}>
+                      <option value="unassigned">— No team yet</option>
+                      {existingTeams.map(t=><option key={t.id} value={t.id}>{t.name} ({t.memberCount} members)</option>)}
+                      <option value="new">+ Create new team…</option>
+                    </select>
+                    {(currentOverride==="new")&&(
+                      <input value={newTeamInputs[s.name]??""} onChange={e=>setNewTeamInputs(p=>({...p,[s.name]:e.target.value}))}
+                        placeholder="Team name"
+                        className="rounded-lg px-2 py-1.5 text-xs focus:outline-none w-28"
+                        style={{background:"var(--bg-card)",border:"1px solid rgba(124,58,237,0.4)",color:"var(--text-primary)"}}/>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-4 py-2 text-xs" style={{background:"rgba(0,0,0,0.2)",color:"var(--text-faint)",borderTop:"1px solid var(--border)"}}>
+              Students assigned to teams will be automatically added with their wallet addresses after generation.
+            </div>
+          </div>
+        )}
       </div>
       <button onClick={handleGenerate} disabled={generating||!csvContent.trim()}
         className="w-full py-3.5 rounded-xl font-semibold text-white disabled:opacity-30 mb-4 transition-all" style={{background:"var(--accent-grad)"}}>
