@@ -183,7 +183,54 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [activeTeam, setActiveTeam] = useState<string | null>(null);
   const [previewModal, setPreviewModal] = useState<{teamId:string;teamName:string;tier:TierLevel}|null>(null);
-  const [tab, setTab] = useState<"teams" | "leaderboard" | "settings">("teams");
+
+  // ── Pinata keys (saved to localStorage) ──────────────────────────────────
+  const [pinataKey,    setPinataKey]    = useState("");
+  const [pinataSecret, setPinataSecret] = useState("");
+  const [pinataKeysSaved, setPinataKeysSaved] = useState(false);
+  useEffect(() => {
+    const saved = localStorage.getItem("minthon_pinata");
+    if (saved) { try { const p=JSON.parse(saved); setPinataKey(p.key??""); setPinataSecret(p.secret??""); setPinataKeysSaved(true); } catch{} }
+  }, []);
+  function savePinataKeys() {
+    localStorage.setItem("minthon_pinata", JSON.stringify({key:pinataKey,secret:pinataSecret}));
+    setPinataKeysSaved(true);
+    flash("ok","Pinata keys saved to browser");
+  }
+  function clearPinataKeys() {
+    localStorage.removeItem("minthon_pinata");
+    setPinataKey(""); setPinataSecret(""); setPinataKeysSaved(false);
+    flash("ok","Pinata keys cleared");
+  }
+
+  // ── Batch mint state ────────────────────────────────────────────────────── 
+  const [mintLog,     setMintLog]     = useState<Array<{name:string;status:"pending"|"running"|"ok"|"err";msg?:string}>>([]);
+  const [mintProgress,setMintProgress]= useState({done:0,failed:0,total:0});
+  const [minting,     setMinting]     = useState(false);
+  const [mintConfirmed,setMintConfirmed]=useState(false);
+  const mintAbortRef = { current: false };
+
+  // ── Wallet credentials from localStorage (set in Collection Setup) ─────── 
+  const [adminAccountId,  setAdminAccountId]  = useState("");
+  const [adminPrivateKey, setAdminPrivateKey] = useState("");
+  const [adminNetwork,    setAdminNetwork]    = useState("testnet");
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("minthon_wallet_v2");
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (parsed.encrypted === false) {
+        setAdminAccountId(parsed.accountId??"");
+        setAdminPrivateKey(parsed.privateKey??"");
+        setAdminNetwork(parsed.network??"testnet");
+      } else if (parsed.encrypted === true) {
+        setAdminAccountId(parsed.accountId??"");
+        setAdminNetwork(parsed.network??"testnet");
+        // encrypted key — will need to unlock in Collection Setup
+      }
+    } catch {}
+  }, []);
+  const [tab, setTab] = useState<"teams" | "leaderboard" | "mint" | "settings">("teams");
 
   // Form state
   const [newTeamName, setNewTeamName] = useState("");
@@ -350,7 +397,7 @@ export default function AdminPage() {
       {/* Tabs */}
       <div className="flex items-center justify-between px-6 mt-4">
         <div className="flex gap-1">
-          {(["teams", "leaderboard", "settings"] as const).map((t) => (
+          {(["teams", "leaderboard", "mint", "settings"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -588,6 +635,225 @@ export default function AdminPage() {
             {teams.length === 0 && (
               <div className="text-center py-12 text-white/30">No teams yet</div>
             )}
+          </div>
+        )}
+
+        {/* ── MINT TAB ─────────────────────────────────────────────────────── */}
+        {tab === "mint" && (
+          <div className="max-w-2xl space-y-5">
+
+            {/* Pinata Keys */}
+            <div className="rounded-2xl border p-5 space-y-4" style={{background:"var(--bg-card,rgba(255,255,255,0.05))",borderColor:"var(--border,rgba(255,255,255,0.1))"}}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-white">IPFS / Pinata Keys</h3>
+                  <p className="text-xs text-white/40 mt-0.5">Required to upload NFT images and metadata before minting</p>
+                </div>
+                {pinataKeysSaved && <span className="text-xs text-emerald-400 bg-emerald-900/30 border border-emerald-700/40 px-2 py-1 rounded-full">✓ Saved</span>}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-xs text-white/50 mb-1 block">API Key</label>
+                  <input type="password" value={pinataKey} onChange={e=>setPinataKey(e.target.value)} placeholder="Pinata API key"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-violet-500 text-white placeholder-white/20"/></div>
+                <div><label className="text-xs text-white/50 mb-1 block">API Secret</label>
+                  <input type="password" value={pinataSecret} onChange={e=>setPinataSecret(e.target.value)} placeholder="Pinata API secret"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-violet-500 text-white placeholder-white/20"/></div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={savePinataKeys} disabled={!pinataKey||!pinataSecret}
+                  className="px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-30 transition-all"
+                  style={{background:"linear-gradient(135deg,#7c3aed,#c026d3)"}}>
+                  💾 Save to Browser
+                </button>
+                {pinataKeysSaved && <button onClick={clearPinataKeys} className="px-4 py-2 rounded-xl text-sm border border-white/10 text-white/40 hover:text-white/70 transition-all">Clear</button>}
+                <a href="https://pinata.cloud" target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-xl text-sm border border-white/10 text-violet-400 hover:text-violet-300 transition-all">Get Pinata keys ↗</a>
+              </div>
+            </div>
+
+            {/* Wallet credentials status */}
+            <div className="rounded-2xl border p-5" style={{background:"var(--bg-card,rgba(255,255,255,0.05))",borderColor:"var(--border,rgba(255,255,255,0.1))"}}>
+              <h3 className="font-semibold text-white mb-3">Hedera Wallet Status</h3>
+              {adminAccountId ? (
+                <div className="flex items-center gap-3 p-3 rounded-xl" style={{background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.3)"}}>
+                  <span className="text-emerald-400 text-lg">✓</span>
+                  <div>
+                    <div className="text-sm text-emerald-300 font-medium">{adminAccountId}</div>
+                    <div className="text-xs text-white/40">{adminNetwork} · {adminPrivateKey?"Key loaded":"Key encrypted — unlock in Collection Setup"}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 p-3 rounded-xl" style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)"}}>
+                  <span className="text-amber-400 text-lg">⚠</span>
+                  <div>
+                    <div className="text-sm text-amber-300">No wallet credentials found</div>
+                    <div className="text-xs text-white/40">Go to NFT Collection Setup → Step 1 and enter your credentials</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Batch Mint Panel */}
+            <div className="rounded-2xl border p-5 space-y-4" style={{background:"var(--bg-card,rgba(255,255,255,0.05))",borderColor:"var(--border,rgba(255,255,255,0.1))"}}>
+              <div>
+                <h3 className="font-semibold text-white">Batch Mint NFTs</h3>
+                <p className="text-xs text-white/40 mt-0.5">Mint NFTs for all team members who have a wallet address registered</p>
+              </div>
+
+              {/* Readiness checklist */}
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  {ok:Boolean(adminAccountId&&adminPrivateKey), label:"Wallet credentials"},
+                  {ok:pinataKeysSaved&&Boolean(pinataKey), label:"Pinata keys saved"},
+                  {ok:teams.some(t=>t.members.some(m=>m.walletAddress&&!m.mintedNFT)), label:"Members with wallets"},
+                  {ok:Boolean(teams.length), label:"Teams created"},
+                ].map((item,i)=>(
+                  <div key={i} className="flex items-center gap-2 p-2.5 rounded-xl border text-xs"
+                    style={{background:item.ok?"rgba(16,185,129,0.08)":"rgba(255,255,255,0.03)",borderColor:item.ok?"rgba(16,185,129,0.4)":"rgba(255,255,255,0.1)",color:item.ok?"rgb(52,211,153)":"rgba(255,255,255,0.3)"}}>
+                    <span>{item.ok?"✓":"○"}</span><span>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Eligible members list */}
+              {(() => {
+                const eligible = teams.flatMap(t => t.members.filter(m=>m.walletAddress&&!m.mintedNFT).map(m=>({teamName:t.name,memberName:m.name,wallet:m.walletAddress,tier:t.currentTier as TierLevel})));
+                const alreadyMinted = teams.flatMap(t => t.members.filter(m=>m.mintedNFT).map(m=>({teamName:t.name,memberName:m.name})));
+                const noWallet = teams.flatMap(t => t.members.filter(m=>!m.walletAddress&&!m.mintedNFT).map(m=>({teamName:t.name,memberName:m.name})));
+                const TIER_COLOR:Record<TierLevel,string>={1:"text-slate-300",2:"text-blue-300",3:"text-emerald-300",4:"text-purple-300",5:"text-amber-300"};
+                const pct = mintProgress.total>0?Math.round(((mintProgress.done+mintProgress.failed)/mintProgress.total)*100):0;
+
+                async function startBatchMint() {
+                  if(!adminAccountId||!adminPrivateKey){flash("err","No wallet key — go to Collection Setup → Step 1 and unlock your key");return;}
+                  if(!pinataKey||!pinataSecret){flash("err","Enter and save your Pinata API keys above");return;}
+                  if(!eligible.length){flash("err","No eligible members to mint");return;}
+                  mintAbortRef.current=false;
+                  setMinting(true);
+                  setMintProgress({done:0,failed:0,total:eligible.length});
+                  setMintLog(eligible.map(m=>({name:`${m.teamName} / ${m.memberName}`,status:"pending"})));
+                  
+                  for(let i=0;i<eligible.length;i++){
+                    if(mintAbortRef.current)break;
+                    const item=eligible[i];
+                    setMintLog(p=>p.map((l,idx)=>idx===i?{...l,status:"running"}:l));
+                    try{
+                      const res=await fetch("/api/mint",{method:"POST",headers:{"Content-Type":"application/json"},
+                        body:JSON.stringify({
+                          action:"batch_mint",
+                          teamId:teams.find(t=>t.name===item.teamName)?.id,
+                          memberId:teams.find(t=>t.name===item.teamName)?.members.find(m=>m.name===item.memberName)?.id,
+                          walletAddress:item.wallet,
+                          pinataApiKey:pinataKey,
+                          pinataApiSecret:pinataSecret,
+                          credentials:{accountId:adminAccountId,privateKey:adminPrivateKey,network:adminNetwork},
+                        })});
+                      const data=await res.json();
+                      if(!data.success)throw new Error(data.error??"Mint failed");
+                      setMintProgress(p=>({...p,done:p.done+1}));
+                      setMintLog(p=>p.map((l,idx)=>idx===i?{...l,status:"ok",msg:`Serial #${data.serialNumber}`}:l));
+                    }catch(err){
+                      setMintProgress(p=>({...p,failed:p.failed+1}));
+                      setMintLog(p=>p.map((l,idx)=>idx===i?{...l,status:"err",msg:err instanceof Error?err.message:"Unknown"}:l));
+                    }
+                    await new Promise(r=>setTimeout(r,1200));
+                  }
+                  setMinting(false);
+                  loadTeams();
+                }
+
+                return(
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      {[{n:eligible.length,label:"Ready to mint",color:"rgba(16,185,129,0.1)",border:"rgba(16,185,129,0.3)",text:"rgb(52,211,153)"},
+                        {n:noWallet.length,label:"No wallet",color:"rgba(245,158,11,0.1)",border:"rgba(245,158,11,0.3)",text:"rgb(251,191,36)"},
+                        {n:alreadyMinted.length,label:"Already minted",color:"rgba(255,255,255,0.03)",border:"rgba(255,255,255,0.1)",text:"rgba(255,255,255,0.4)"}].map((s,i)=>(
+                        <div key={i} className="rounded-xl p-3 border" style={{background:s.color,borderColor:s.border}}>
+                          <div className="text-2xl font-bold" style={{color:s.text}}>{s.n}</div>
+                          <div className="text-xs mt-0.5 text-white/40">{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {eligible.length>0&&(
+                      <div className="rounded-xl border overflow-hidden" style={{borderColor:"rgba(255,255,255,0.1)"}}>
+                        <div className="px-4 py-2 grid grid-cols-12 gap-2 text-xs text-white/30" style={{background:"rgba(255,255,255,0.05)",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
+                          <span className="col-span-3">Team</span><span className="col-span-3">Member</span><span className="col-span-2">Tier</span><span className="col-span-3">Wallet</span><span className="col-span-1">OK</span>
+                        </div>
+                        <div className="divide-y divide-white/5 max-h-48 overflow-y-auto">
+                          {eligible.map((item,i)=>{const l=mintLog[i];return(
+                            <div key={i} className="px-4 py-2 grid grid-cols-12 gap-2 items-center text-sm">
+                              <span className="col-span-3 text-white/60 truncate">{item.teamName}</span>
+                              <span className="col-span-3 text-white font-medium truncate">{item.memberName}</span>
+                              <span className={`col-span-2 text-xs font-medium ${TIER_COLOR[item.tier]}`}>{DEFAULT_TIERS[item.tier-1].label}</span>
+                              <span className="col-span-3 text-xs font-mono text-white/30 truncate">{item.wallet}</span>
+                              <span className="col-span-1 text-right">
+                                {l?.status==="ok"&&<span className="text-emerald-400" title={l.msg}>✓</span>}
+                                {l?.status==="err"&&<span className="text-red-400" title={l.msg}>✗</span>}
+                                {l?.status==="running"&&<span className="inline-block w-3 h-3 rounded-full border border-violet-400 border-t-transparent animate-spin"/>}
+                              </span>
+                            </div>);})}
+                        </div>
+                      </div>
+                    )}
+
+                    {mintLog.length>0&&(
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-xs text-white/40">
+                          <span>{mintProgress.done} minted · {mintProgress.failed} failed · {mintProgress.total-mintProgress.done-mintProgress.failed} remaining</span>
+                          <span>{pct}%</span>
+                        </div>
+                        <div className="h-2 rounded-full overflow-hidden bg-white/10">
+                          <div className="h-full rounded-full transition-all duration-500" style={{width:`${pct}%`,background:"linear-gradient(90deg,#7c3aed,#c026d3)"}}/>
+                        </div>
+                      </div>
+                    )}
+
+                    {eligible.length>0&&!minting&&mintProgress.done+mintProgress.failed<mintProgress.total&&(
+                      <div className="space-y-3">
+                        <label className="flex items-start gap-3 p-4 rounded-xl border cursor-pointer" style={{background:"rgba(124,58,237,0.1)",borderColor:"rgba(124,58,237,0.3)"}}>
+                          <input type="checkbox" checked={mintConfirmed} onChange={e=>setMintConfirmed(e.target.checked)} className="mt-0.5 w-4 h-4 accent-violet-500"/>
+                          <span className="text-sm text-violet-300/80">
+                            I confirm wallet credentials, Pinata keys, and member wallets are correct. 
+                            Ready to mint <strong className="text-violet-200">{eligible.length} NFT{eligible.length!==1?"s":""}</strong> on <strong className="text-violet-200">{adminNetwork}</strong>. Cannot be undone.
+                          </span>
+                        </label>
+                        <button
+                          onClick={startBatchMint}
+                          disabled={!mintConfirmed||minting||!adminPrivateKey||!pinataKey}
+                          className="w-full py-4 rounded-xl font-bold text-white text-lg disabled:opacity-30 transition-all"
+                          style={{
+                            background:"linear-gradient(135deg,#7c3aed,#c026d3)",
+                            boxShadow:"0 4px 0 #4c1d95, 0 6px 20px rgba(124,58,237,0.4)",
+                          }}
+                          onMouseDown={e=>{if(!minting){(e.currentTarget as HTMLElement).style.transform="translateY(3px)";(e.currentTarget as HTMLElement).style.boxShadow="0 1px 0 #4c1d95";}}}
+                          onMouseUp={e=>{(e.currentTarget as HTMLElement).style.transform="";(e.currentTarget as HTMLElement).style.boxShadow="0 4px 0 #4c1d95, 0 6px 20px rgba(124,58,237,0.4)";}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.transform="";(e.currentTarget as HTMLElement).style.boxShadow="0 4px 0 #4c1d95, 0 6px 20px rgba(124,58,237,0.4)";}}
+                        >
+                          🚀 Mint {eligible.length} NFT{eligible.length!==1?"s":""} on Hedera ✦
+                        </button>
+                      </div>
+                    )}
+
+                    {minting&&(
+                      <button onClick={()=>{mintAbortRef.current=true;}} className="w-full py-3 rounded-xl text-sm border text-red-400 hover:bg-red-900/20 transition-colors border-red-700/50">
+                        Stop After Current Mint
+                      </button>
+                    )}
+
+                    {!minting&&mintProgress.total>0&&mintProgress.done+mintProgress.failed>=mintProgress.total&&(
+                      <div className="p-4 rounded-xl text-center" style={{background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.4)"}}>
+                        <div className="text-lg font-semibold text-emerald-300">✓ Done — {mintProgress.done} minted{mintProgress.failed>0?`, ${mintProgress.failed} failed`:""}</div>
+                      </div>
+                    )}
+
+                    {noWallet.length>0&&(
+                      <div className="text-xs p-3 rounded-xl" style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.2)",color:"rgba(245,158,11,0.8)"}}>
+                        ⚠ {noWallet.length} member{noWallet.length!==1?"s":""} excluded (no wallet): {noWallet.map(m=>`${m.memberName} (${m.teamName})`).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         )}
 
