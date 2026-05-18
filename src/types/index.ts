@@ -77,13 +77,25 @@ export interface DonationEntry {
 }
 
 // ─── Minting ──────────────────────────────────────────────────────────────────
+
+// States of an NFT through its lifecycle
+// preminted = teacher minted it, sitting in treasury, not yet claimed by student
+// claimed   = student connected wallet and it was transferred to them
+export type NFTStatus = "preminted" | "claimed";
+
 export interface MintRecord {
   serialNumber: number;
   tokenId: string;
-  transactionId: string;
+  transactionId: string;       // mint transaction
+  claimTransactionId?: string; // transfer transaction (set when claimed)
   metadata: NFTMetadata;
-  mintedAt: string;
-  walletAddress: string;
+  mintedAt: string;            // when teacher minted
+  claimedAt?: string;          // when student claimed
+  walletAddress: string;       // student's registered wallet
+  status: NFTStatus;
+  imageUri?: string;           // IPFS image URI
+  metadataUri?: string;        // IPFS metadata URI
+  compositeImageData?: string; // base64 preview (stored temporarily for claim screen)
 }
 
 export interface GeneratedTraits {

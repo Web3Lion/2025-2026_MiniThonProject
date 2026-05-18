@@ -344,3 +344,49 @@ export function hashScanToken(tokenId: string, network: "testnet" | "mainnet"): 
     : "https://hashscan.io/testnet";
   return `${base}/token/${tokenId}`;
 }
+
+// ─── Transfer NFT from treasury to student (claim) ────────────────────────────
+// Called when student clicks "Claim" — no minting, just transfer
+export async function serverTransferNFT(
+  creds: HederaCredentials,
+  tokenId: string,
+  serialNumber: number,
+  recipientAccountId: string
+): Promise<{ success: boolean; transactionId?: string; error?: string }> {
+  try {
+    const {
+      Client, AccountId, TokenId, NftId, TransferTransaction,
+    } = await import("@hashgraph/sdk");
+
+    const client = creds.network === "mainnet"
+      ? Client.forMainnet()
+      : Client.forTestnet();
+
+    const treasuryId = AccountId.fromString(creds.accountId);
+    const privateKey = await parsePrivateKey(creds.privateKey);
+    client.setOperator(treasuryId, privateKey);
+
+    const htsTokenId = TokenId.fromString(tokenId);
+    const recipientId = AccountId.fromString(recipientAccountId);
+
+    const transferTx = await new TransferTransaction()
+      .addNftTransfer(
+        new NftId(htsTokenId, serialNumber),
+        treasuryId,
+        recipientId
+      )
+      .freezeWith(client);
+
+    const signed   = await transferTx.sign(privateKey);
+    const response = await signed.execute(client);
+    await response.getReceipt(client);
+
+    return { success: true, transactionId: response.transactionId.toString() };
+  } catch (err) {
+    console.error("[Hedera] transferNFT error:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Transfer failed",
+    };
+  }
+}

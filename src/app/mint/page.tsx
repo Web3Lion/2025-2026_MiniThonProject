@@ -2,38 +2,38 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useHashPack } from "@/lib/useHashPack";
-import { Team, TeamMember, TierLevel } from "@/types";
+import { TierLevel } from "@/types";
 import { DEFAULT_TIERS, formatDollars } from "@/lib/tierConfig";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const TIER_LABELS: Record<TierLevel, string> = { 1:"Common",2:"Uncommon",3:"Rare",4:"Epic",5:"Legendary" };
-const TIER_COLORS: Record<TierLevel, string> = {
-  1:"from-slate-600 to-slate-800",2:"from-blue-600 to-blue-900",
-  3:"from-emerald-500 to-emerald-900",4:"from-purple-600 to-purple-900",5:"from-amber-500 to-yellow-700"
+const TIER_LABELS: Record<TierLevel,string> = {1:"Common",2:"Uncommon",3:"Rare",4:"Epic",5:"Legendary"};
+const TIER_GRAD:  Record<TierLevel,string>  = {
+  1:"from-slate-600 to-slate-900", 2:"from-blue-600 to-blue-900",
+  3:"from-emerald-500 to-emerald-900", 4:"from-purple-600 to-purple-900", 5:"from-amber-500 to-yellow-800"
 };
-const TIER_GLOW: Record<TierLevel, string> = {
-  1:"shadow-slate-500/20",2:"shadow-blue-500/30",
-  3:"shadow-emerald-500/40",4:"shadow-purple-500/50",5:"shadow-amber-500/60"
+const TIER_ICON:  Record<TierLevel,string>  = {1:"⚪",2:"🔵",3:"💚",4:"💜",5:"⭐"};
+const TIER_BADGE: Record<TierLevel,string>  = {
+  1:"bg-slate-700 text-slate-200", 2:"bg-blue-800 text-blue-200",
+  3:"bg-emerald-800 text-emerald-200", 4:"bg-purple-800 text-purple-200", 5:"bg-amber-700 text-amber-100"
 };
 
-// ─── Step indicator ───────────────────────────────────────────────────────────
+// ─── Steps ────────────────────────────────────────────────────────────────────
 function Steps({current}:{current:number}){
-  const steps=["Connect Wallet","Verify Identity","Preview NFT","Claim!"];
+  const steps=["Connect Wallet","Your NFT","Claim!"];
   return(
     <div className="flex items-center justify-center gap-2 mb-8">
       {steps.map((label,i)=>{
-        const n=i+1;
-        const done=n<current;const active=n===current;
+        const n=i+1; const done=n<current; const active=n===current;
         return(
           <div key={n} className="flex items-center gap-2">
-            <div className={`flex items-center gap-1.5 text-xs font-medium transition-all ${active?"text-white":done?"text-emerald-400":"text-white/30"}`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all
+            <div className={`flex items-center gap-1.5 text-xs font-medium ${active?"text-white":done?"text-emerald-400":"text-white/30"}`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
                 ${done?"bg-emerald-500 text-white":active?"bg-violet-600 text-white border-2 border-violet-400":"bg-white/10 text-white/30"}`}>
                 {done?"✓":n}
               </div>
               <span className="hidden sm:block">{label}</span>
             </div>
-            {i<steps.length-1&&<div className={`w-8 h-px transition-all ${done?"bg-emerald-500":active?"bg-violet-500/50":"bg-white/10"}`}/>}
+            {i<steps.length-1&&<div className={`w-8 h-px ${done?"bg-emerald-500":active?"bg-violet-500/50":"bg-white/10"}`}/>}
           </div>
         );
       })}
@@ -41,152 +41,189 @@ function Steps({current}:{current:number}){
   );
 }
 
-// ─── NFT trait card ───────────────────────────────────────────────────────────
-function TraitCard({traitType,value,tier}:{traitType:string;value:string;tier:TierLevel}){
-  const badges:Record<TierLevel,string>={1:"bg-slate-700 text-slate-200",2:"bg-blue-800 text-blue-200",3:"bg-emerald-800 text-emerald-200",4:"bg-purple-800 text-purple-200",5:"bg-amber-700 text-amber-100"};
-  return(
-    <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-      <div className="text-xs text-white/40 mb-1">{traitType}</div>
-      <div className="font-semibold text-sm text-white">{value}</div>
-      <span className={`mt-1.5 inline-block text-xs px-2 py-0.5 rounded-full ${badges[tier]}`}>{TIER_LABELS[tier]}</span>
-    </div>
-  );
-}
-
-// ─── Confetti burst ───────────────────────────────────────────────────────────
+// ─── Confetti ─────────────────────────────────────────────────────────────────
 function Confetti(){
   const colors=["bg-violet-500","bg-fuchsia-500","bg-amber-400","bg-emerald-400","bg-blue-400","bg-pink-400"];
   return(
     <div className="fixed inset-0 pointer-events-none overflow-hidden z-50">
-      {Array.from({length:40}).map((_,i)=>(
-        <div key={i} className={`absolute w-2 h-2 rounded-sm ${colors[i%colors.length]} opacity-0`}
-          style={{left:`${Math.random()*100}%`,top:"-10px",
-            animation:`fall ${1.5+Math.random()*2}s ease-in ${Math.random()*0.8}s forwards`}}/>
+      {Array.from({length:50}).map((_,i)=>(
+        <div key={i} className={`absolute w-2 h-2 rounded-sm ${colors[i%colors.length]}`}
+          style={{left:`${Math.random()*100}%`,top:"-10px",opacity:0,
+            animation:`fall ${1.5+Math.random()*2}s ease-in ${Math.random()*1}s forwards`}}/>
       ))}
-      <style>{`
-        @keyframes fall {
-          0%   { transform: translateY(0) rotate(0deg);   opacity: 1; }
-          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
-        }
-      `}</style>
+      <style>{`@keyframes fall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}`}</style>
+    </div>
+  );
+}
+
+// ─── NFT Card ─────────────────────────────────────────────────────────────────
+function NFTCard({
+  memberName, teamName, tier, attributes, rarityScore, imageUri, claimed
+}:{
+  memberName:string; teamName:string; tier:TierLevel;
+  attributes:Array<{trait_type:string;value:string;rarity_tier?:TierLevel}>;
+  rarityScore:number; imageUri?:string; claimed?:boolean;
+}){
+  return(
+    <div className={`rounded-2xl overflow-hidden shadow-2xl`} style={{border:"2px solid rgba(124,58,237,0.5)"}}>
+      {/* Image / gradient header */}
+      <div className={`aspect-square bg-gradient-to-br ${TIER_GRAD[tier]} relative flex items-center justify-center overflow-hidden`}>
+        <div className="absolute inset-0" style={{background:"radial-gradient(ellipse at center,rgba(255,255,255,0.1) 0%,transparent 65%)"}}/>
+        {imageUri && imageUri !== "ipfs://placeholder" ? (
+          <img src={imageUri.replace("ipfs://","https://ipfs.io/ipfs/")} alt="NFT" className="w-full h-full object-cover absolute inset-0"/>
+        ) : (
+          <div className="relative z-10 text-center px-6">
+            <div className="text-7xl mb-3">{TIER_ICON[tier]}</div>
+            <div className="font-black text-white text-xl">{memberName}</div>
+            <div className="text-white/60 text-sm mt-1">{TIER_LABELS[tier]} Tier</div>
+          </div>
+        )}
+        {claimed && (
+          <div className="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-bold"
+            style={{background:"rgba(16,185,129,0.9)",color:"white"}}>✓ Claimed</div>
+        )}
+        <div className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-bold"
+          style={{background:"rgba(0,0,0,0.6)",color:"white",border:"1px solid rgba(255,255,255,0.2)"}}>
+          ✦ {rarityScore}/100
+        </div>
+      </div>
+
+      {/* Metadata */}
+      <div className="p-5 bg-gray-900/95">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="font-black text-xl text-white">{memberName}</div>
+            <div className="text-sm text-white/50">{teamName}</div>
+          </div>
+          <span className={`px-3 py-1.5 rounded-full text-sm font-bold ${TIER_BADGE[tier]}`}>
+            {TIER_ICON[tier]} {TIER_LABELS[tier]}
+          </span>
+        </div>
+        {attributes.length > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            {attributes.map(attr=>(
+              <div key={attr.trait_type} className="rounded-xl p-2.5" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.08)"}}>
+                <div className="text-xs mb-0.5 text-white/35">{attr.trait_type}</div>
+                <div className="text-xs font-semibold text-white truncate">{attr.value}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MAIN MINT PAGE
+// MAIN PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function MintPage(){
-  // Detect network from store (fallback testnet)
-  const[appNetwork,setAppNetwork]=useState<"testnet"|"mainnet">("testnet");
-  useEffect(()=>{fetch("/api/collection").then(r=>r.json()).then(d=>{/* network from store */}).catch(()=>{});});
+  const [appNetwork, setAppNetwork] = useState<"testnet"|"mainnet">("testnet");
+  const [hasServerCreds, setHasServerCreds] = useState(false);
 
-  const hashpack=useHashPack(appNetwork);
-
-  const[step,setStep]=useState(1);
-  const[team,setTeam]=useState<Team|null>(null);
-  const[member,setMember]=useState<TeamMember|null>(null);
-  const[preview,setPreview]=useState<{attributes:Array<{trait_type:string;value:string;rarity_tier:TierLevel}>;rarityScore:number;tier:TierLevel}|null>(null);
-  const[minting,setMinting]=useState(false);
-  const[minted,setMinted]=useState<{serialNumber:number;transactionId:string;imageUri:string;tierName:string;rarityScore:number}|null>(null);
-  const[error,setError]=useState<string|null>(null);
-  const[showConfetti,setShowConfetti]=useState(false);
-
-  // ── Step 1 → 2: After wallet connected, look up student ───────────────────
   useEffect(()=>{
-    if(hashpack.connectionState==="connected"&&hashpack.accountId&&step===1){
-      lookupWallet(hashpack.accountId);
-    }
-  },[hashpack.connectionState,hashpack.accountId]);
+    fetch("/api/admin-credentials")
+      .then(r=>r.json())
+      .then(d=>{
+        setAppNetwork(d.network??"testnet");
+        setHasServerCreds(d.hasServerCreds??false);
+      })
+      .catch(()=>{});
+  },[]);
 
-  async function lookupWallet(accountId:string){
+  const hashpack = useHashPack(appNetwork);
+
+  const [step,         setStep]         = useState(1);
+  const [memberName,   setMemberName]   = useState("");
+  const [teamName,     setTeamName]     = useState("");
+  const [tier,         setTier]         = useState<TierLevel>(1);
+  const [attributes,   setAttributes]   = useState<Array<{trait_type:string;value:string;rarity_tier?:TierLevel}>>([]);
+  const [rarityScore,  setRarityScore]  = useState(0);
+  const [imageUri,     setImageUri]     = useState<string|undefined>();
+  const [serialNumber, setSerialNumber] = useState<number|null>(null);
+  const [claimTxId,    setClaimTxId]   = useState<string|null>(null);
+  const [claiming,     setClaiming]     = useState(false);
+  const [claimed,      setClaimed]      = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [error,        setError]        = useState<string|null>(null);
+  const [nftStatus,    setNftStatus]    = useState<"preminted"|"claimed"|null>(null);
+
+  // When wallet connects, look up the student
+  useEffect(()=>{
+    if(hashpack.connectionState==="connected" && hashpack.accountId && step===1){
+      lookupStudent(hashpack.accountId);
+    }
+  },[hashpack.connectionState, hashpack.accountId]);
+
+  async function lookupStudent(accountId: string){
     setError(null);
     try{
-      const res=await fetch("/api/mint",{method:"POST",headers:{"Content-Type":"application/json"},
+      const res  = await fetch("/api/mint",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({action:"lookup_wallet",walletAddress:accountId})});
-      const data=await res.json();
+      const data = await res.json();
 
-      if(!data.team){
+      if(!data.team || !data.member){
         setError("Your wallet isn't registered for this event yet. Ask your teacher to add your wallet address.");
         return;
       }
 
-      setTeam(data.team);
-      setMember(data.member);
+      setMemberName(data.member.name);
+      setTeamName(data.team.name);
+      setTier(data.team.currentTier as TierLevel);
+      setNftStatus(data.nftStatus);
 
-      if(data.member?.mintedNFT){
-        setMinted({
-          serialNumber:  data.member.mintedNFT.serialNumber,
-          transactionId: data.member.mintedNFT.transactionId,
-          imageUri:      data.member.mintedNFT.metadata?.image??"",
-          tierName:      TIER_LABELS[data.team.currentTier as TierLevel]??"Common",
-          rarityScore:   0,
-        });
-        setStep(4);
-        return;
+      if(data.member.mintedNFT){
+        const nft = data.member.mintedNFT;
+        setSerialNumber(nft.serialNumber);
+        setImageUri(nft.imageUri);
+        setRarityScore(nft.metadata?.properties?.rarityScore ?? 0);
+        setAttributes(nft.metadata?.attributes ?? []);
+
+        if(nft.status === "claimed"){
+          setClaimed(true);
+          setClaimTxId(nft.claimTransactionId ?? nft.transactionId);
+        }
       }
-
-      // Load NFT preview
-      const prevRes=await fetch("/api/mint",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({action:"preview",teamId:data.team.id})});
-      const prevData=await prevRes.json();
-      if(prevData.attributes) setPreview({attributes:prevData.attributes,rarityScore:prevData.rarityScore,tier:prevData.tier});
 
       setStep(2);
     }catch(err){
-      setError("Could not verify your wallet. Please try again.");
+      setError("Could not look up your account. Please try again.");
     }
   }
 
-  // ── Step 3: Show preview ───────────────────────────────────────────────────
-  function proceedToPreview(){setStep(3);}
-
-  // ── Step 4: Mint ───────────────────────────────────────────────────────────
-  async function handleMint(){
-    if(!team||!member||!hashpack.accountId)return;
-    setMinting(true);setError(null);
+  async function handleClaim(){
+    if(!hashpack.accountId) return;
+    setClaiming(true);
+    setError(null);
 
     try{
-      const res=await fetch("/api/mint",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          action:"mint",
-          teamId:      team.id,
-          memberId:    member.id,
-          walletAddress:hashpack.accountId,
-          // Note: credentials come from the server's stored token —
-          // for student self-mint we need the admin to have set them up.
-          // Pinata keys also from env on server.
-        })});
-      const data=await res.json();
+      // Claim via server — treasury credentials are in .env.local, never client-side
+      const res  = await fetch("/api/claim",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({walletAddress:hashpack.accountId})});
+      const data = await res.json();
 
       if(!data.success){
-        setError(data.error??"Mint failed — please ask your teacher for help.");
-        setMinting(false);
+        setError(data.error ?? "Claim failed — ask your teacher for help");
+        setClaiming(false);
         return;
       }
 
-      setMinted({
-        serialNumber:  data.serialNumber,
-        transactionId: data.transactionId,
-        imageUri:      data.imageUri??"",
-        tierName:      data.tierName??"Common",
-        rarityScore:   data.rarityScore??0,
-      });
-      setStep(4);
+      setSerialNumber(data.serialNumber);
+      setClaimTxId(data.claimTransactionId);
+      setClaimed(true);
+      setNftStatus("claimed");
+      setStep(3);
       setShowConfetti(true);
-      setTimeout(()=>setShowConfetti(false),4000);
+      setTimeout(()=>setShowConfetti(false),5000);
     }catch(err){
-      setError("Network error — please try again.");
+      setError("Network error — please try again");
     }
-    setMinting(false);
+    setClaiming(false);
   }
-
-  const tierLevel = (team?.currentTier??1) as TierLevel;
-  const tierCfg   = DEFAULT_TIERS[tierLevel-1];
 
   return(
     <div className="min-h-screen bg-gray-950 text-white" style={{fontFamily:"'DM Sans',system-ui,sans-serif"}}>
-      {showConfetti&&<Confetti/>}
+      {showConfetti && <Confetti/>}
 
       {/* Header */}
       <div className="text-center pt-12 pb-6 px-4">
@@ -198,37 +235,38 @@ export default function MintPage(){
           Claim Your NFT
         </h1>
         <p className="text-white/50 text-sm max-w-md mx-auto">
-          Connect your HashPack wallet to verify your identity and claim the NFT your team earned.
+          Connect your HashPack wallet — your NFT has already been minted by your teacher and is waiting for you.
         </p>
       </div>
 
       <div className="max-w-lg mx-auto px-4 pb-16">
         <Steps current={step}/>
 
-        {/* Error banner */}
+        {/* Error */}
         {error&&(
-          <div className="mb-5 p-4 rounded-xl flex items-start gap-3 text-sm" style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.4)"}}>
+          <div className="mb-5 p-4 rounded-xl flex items-start gap-3 text-sm"
+            style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.4)"}}>
             <span className="text-red-400 text-lg shrink-0">✗</span>
             <span className="text-red-300">{error}</span>
           </div>
         )}
 
-        {/* ── STEP 1: Connect HashPack ─────────────────────────────────────── */}
+        {/* ── STEP 1: Connect ───────────────────────────────────────────────── */}
         {step===1&&(
           <div className="bg-white/5 rounded-2xl border border-white/10 p-6 space-y-5">
             <div className="text-center space-y-2">
-              <div className="text-4xl">🔐</div>
+              <div className="text-5xl">🔐</div>
               <h2 className="font-semibold text-lg">Connect Your HashPack Wallet</h2>
-              <p className="text-sm text-white/50">We'll verify your identity automatically using your wallet address.</p>
+              <p className="text-sm text-white/50">Your NFT was pre-minted by your teacher. Connect to see it and claim it to your wallet.</p>
             </div>
 
-            {hashpack.connectionState==="connected"?(
-              <div className="p-4 rounded-xl text-center" style={{background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.3)"}}>
-                <div className="text-emerald-400 font-semibold">✓ Connected</div>
-                <div className="font-mono text-sm text-white/70 mt-1">{hashpack.accountId}</div>
-                <div className="text-xs text-white/40 mt-0.5">{hashpack.network} · Looking up your account…</div>
+            {!hasServerCreds&&(
+              <div className="p-3 rounded-xl text-xs text-center" style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)",color:"rgba(245,158,11,0.9)"}}>
+                ⚠ Treasury credentials not configured — teacher needs to add HEDERA_TREASURY_ID and HEDERA_TREASURY_KEY to .env.local
               </div>
-            ):hashpack.connectionState==="connecting"?(
+            )}
+
+            {hashpack.connectionState==="connecting"?(
               <div className="p-4 rounded-xl text-center" style={{background:"rgba(124,58,237,0.1)",border:"1px solid rgba(124,58,237,0.3)"}}>
                 <div className="flex items-center justify-center gap-2 text-violet-300">
                   <span className="w-4 h-4 rounded-full border-2 border-violet-400 border-t-transparent animate-spin"/>
@@ -240,194 +278,161 @@ export default function MintPage(){
               <div className="space-y-3">
                 <div className="p-4 rounded-xl text-center" style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)"}}>
                   <div className="text-amber-400 font-medium">HashPack not detected</div>
-                  <p className="text-xs text-white/50 mt-1">You need the HashPack browser extension to connect your wallet.</p>
+                  <p className="text-xs text-white/50 mt-1">Install the HashPack browser extension to claim your NFT.</p>
                 </div>
                 <a href="https://www.hashpack.app/download" target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-medium text-white transition-all"
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-medium text-white"
                   style={{background:"linear-gradient(135deg,#7c3aed,#c026d3)"}}>
                   📥 Download HashPack
                 </a>
                 <p className="text-center text-xs text-white/30">After installing, refresh this page and try again.</p>
               </div>
             ):(
-              <div className="space-y-3">
-                <button
-                  onClick={hashpack.connect}
-                  className="w-full py-4 rounded-xl font-bold text-white text-lg transition-all relative overflow-hidden"
+              <button onClick={hashpack.connect}
+                className="w-full py-4 rounded-xl font-bold text-white text-lg transition-all"
+                style={{
+                  background:"linear-gradient(135deg,#7c3aed,#c026d3)",
+                  boxShadow:"0 4px 0 #4c1d95, 0 8px 24px rgba(124,58,237,0.4)",
+                }}
+                onMouseDown={e=>{(e.currentTarget as HTMLElement).style.transform="translateY(3px)";(e.currentTarget as HTMLElement).style.boxShadow="0 1px 0 #4c1d95";}}
+                onMouseUp={e=>{(e.currentTarget as HTMLElement).style.transform="";(e.currentTarget as HTMLElement).style.boxShadow="0 4px 0 #4c1d95, 0 8px 24px rgba(124,58,237,0.4)";}}
+                onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.transform="";(e.currentTarget as HTMLElement).style.boxShadow="0 4px 0 #4c1d95, 0 8px 24px rgba(124,58,237,0.4)";}}
+              >
+                🔗 Connect HashPack Wallet
+              </button>
+            )}
+
+            {!hashpack.isInstalled&&hashpack.connectionState==="idle"&&(
+              <p className="text-center text-xs text-white/30">
+                Don't have HashPack?{" "}
+                <a href="https://www.hashpack.app/download" target="_blank" rel="noopener noreferrer" className="text-violet-400 hover:text-violet-300">Download it here →</a>
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── STEP 2: Show NFT + Claim button ───────────────────────────────── */}
+        {step===2&&(
+          <div className="space-y-4">
+            {/* Wallet confirmed */}
+            <div className="flex items-center gap-3 p-3 rounded-xl" style={{background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.3)"}}>
+              <span className="text-emerald-400">✓</span>
+              <span className="text-sm text-emerald-300">Connected: <span className="font-mono">{hashpack.accountId}</span></span>
+              <button onClick={()=>{hashpack.disconnect();setStep(1);setError(null);}} className="ml-auto text-xs text-white/30 hover:text-white/60">Disconnect</button>
+            </div>
+
+            {/* NFT status */}
+            {nftStatus===null&&(
+              <div className="p-5 rounded-2xl text-center" style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)"}}>
+                <div className="text-4xl mb-3">⏳</div>
+                <h2 className="font-semibold text-lg text-amber-300">NFT Not Ready Yet</h2>
+                <p className="text-sm text-white/50 mt-2">
+                  Hey {memberName}! Your teacher hasn't minted your NFT yet.<br/>
+                  Ask them to go to the Admin → Mint tab and mint your NFT.
+                </p>
+                <div className="mt-4 p-3 rounded-xl text-sm" style={{background:"rgba(0,0,0,0.3)",color:"rgba(255,255,255,0.5)"}}>
+                  Team: <strong className="text-white">{teamName}</strong> · Tier: <strong className="text-white">{TIER_LABELS[tier]}</strong>
+                </div>
+              </div>
+            )}
+
+            {nftStatus==="preminted"&&(
+              <>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-white mb-1">Your NFT is ready, {memberName}! 🎉</div>
+                  <div className="text-sm text-white/50">Click Claim to transfer it to your HashPack wallet</div>
+                </div>
+
+                <NFTCard
+                  memberName={memberName} teamName={teamName} tier={tier}
+                  attributes={attributes} rarityScore={rarityScore} imageUri={imageUri}
+                />
+
+                <button onClick={handleClaim} disabled={claiming||!hasServerCreds}
+                  className="w-full py-4 rounded-xl font-black text-white text-xl disabled:opacity-30 transition-all"
                   style={{
-                    background:"linear-gradient(135deg,#7c3aed,#c026d3)",
-                    boxShadow:"0 4px 0 #4c1d95, 0 8px 24px rgba(124,58,237,0.4)",
+                    background:claiming?"rgba(100,40,200,0.5)":"linear-gradient(135deg,#7c3aed,#c026d3)",
+                    boxShadow:claiming?"none":"0 4px 0 #4c1d95, 0 8px 32px rgba(124,58,237,0.5)",
+                    cursor:claiming?"wait":"pointer",
                   }}
-                  onMouseDown={e=>{(e.currentTarget as HTMLElement).style.transform="translateY(3px)";(e.currentTarget as HTMLElement).style.boxShadow="0 1px 0 #4c1d95";}}
-                  onMouseUp={e=>{(e.currentTarget as HTMLElement).style.transform="";(e.currentTarget as HTMLElement).style.boxShadow="0 4px 0 #4c1d95, 0 8px 24px rgba(124,58,237,0.4)";}}
-                  onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.transform="";(e.currentTarget as HTMLElement).style.boxShadow="0 4px 0 #4c1d95, 0 8px 24px rgba(124,58,237,0.4)";}}
+                  onMouseDown={e=>{if(!claiming){(e.currentTarget as HTMLElement).style.transform="translateY(3px)";(e.currentTarget as HTMLElement).style.boxShadow="0 1px 0 #4c1d95";}}}
+                  onMouseUp={e=>{if(!claiming){(e.currentTarget as HTMLElement).style.transform="";(e.currentTarget as HTMLElement).style.boxShadow="0 4px 0 #4c1d95, 0 8px 32px rgba(124,58,237,0.5)";}}}
+                  onMouseLeave={e=>{if(!claiming){(e.currentTarget as HTMLElement).style.transform="";(e.currentTarget as HTMLElement).style.boxShadow="0 4px 0 #4c1d95, 0 8px 32px rgba(124,58,237,0.5)";}}}
                 >
-                  🔗 Connect HashPack Wallet
+                  {claiming?(
+                    <span className="flex items-center justify-center gap-3">
+                      <span className="w-6 h-6 rounded-full border-2 border-white/30 border-t-white animate-spin"/>
+                      Claiming — sending to your wallet…
+                    </span>
+                  ):"🎁 Claim My NFT →"}
                 </button>
-                {!hashpack.isInstalled&&(
-                  <p className="text-center text-xs text-white/30">
-                    Don't have HashPack?{" "}
-                    <a href="https://www.hashpack.app/download" target="_blank" rel="noopener noreferrer" className="text-violet-400 hover:text-violet-300">Download it here →</a>
-                  </p>
+
+                <p className="text-center text-xs text-white/30">
+                  This transfers the NFT directly to your HashPack wallet. One click — done.
+                </p>
+              </>
+            )}
+
+            {nftStatus==="claimed"&&(
+              <div className="space-y-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-white mb-1">Already claimed! 🎉</div>
+                  <div className="text-sm text-white/50">This NFT is already in your HashPack wallet</div>
+                </div>
+                <NFTCard
+                  memberName={memberName} teamName={teamName} tier={tier}
+                  attributes={attributes} rarityScore={rarityScore} imageUri={imageUri} claimed
+                />
+                {claimTxId&&(
+                  <a href={`https://hashscan.io/${appNetwork}/transaction/${claimTxId}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="block text-center py-3 rounded-xl text-sm font-medium transition-all"
+                    style={{background:"rgba(124,58,237,0.15)",border:"1px solid rgba(124,58,237,0.3)",color:"rgb(196,181,253)"}}>
+                    🔍 View on HashScan →
+                  </a>
                 )}
               </div>
             )}
           </div>
         )}
 
-        {/* ── STEP 2: Verify identity ──────────────────────────────────────── */}
-        {step===2&&team&&member&&(
-          <div className="space-y-4">
-            <div className="bg-white/5 rounded-2xl border border-white/10 p-6">
-              <div className="text-center mb-5">
-                <div className="text-4xl mb-2">👋</div>
-                <h2 className="font-semibold text-xl">Welcome, {member.name}!</h2>
-                <p className="text-white/50 text-sm mt-1">We found your account. Is this you?</p>
-              </div>
-
-              <div className="space-y-3 mb-5">
-                <div className="flex items-center justify-between p-3 rounded-xl" style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)"}}>
-                  <span className="text-sm text-white/60">Team</span>
-                  <span className="font-semibold">{team.name}</span>
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-xl" style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)"}}>
-                  <span className="text-sm text-white/60">Donations Raised</span>
-                  <span className="font-semibold text-emerald-400">{formatDollars(team.donationTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-xl" style={{background:`rgba(124,58,237,0.15)`,border:"1px solid rgba(124,58,237,0.3)"}}>
-                  <span className="text-sm text-white/60">NFT Tier Earned</span>
-                  <span className={`font-bold bg-gradient-to-r ${TIER_COLORS[tierLevel]} bg-clip-text text-transparent`}>
-                    ✦ {TIER_LABELS[tierLevel]}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-xl" style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)"}}>
-                  <span className="text-sm text-white/60">Wallet</span>
-                  <span className="font-mono text-xs text-white/70">{hashpack.accountId}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={()=>{hashpack.disconnect();setStep(1);setTeam(null);setMember(null);setError(null);}}
-                  className="py-3 rounded-xl text-sm border transition-all" style={{borderColor:"rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.5)"}}>
-                  Not me
-                </button>
-                <button onClick={proceedToPreview}
-                  className="py-3 rounded-xl text-sm font-semibold text-white transition-all"
-                  style={{background:"linear-gradient(135deg,#7c3aed,#c026d3)",boxShadow:"0 3px 0 #4c1d95"}}>
-                  That's me! →
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── STEP 3: NFT Preview ──────────────────────────────────────────── */}
-        {step===3&&team&&preview&&(
-          <div className="space-y-4">
-            {/* NFT card */}
-            <div className={`rounded-2xl overflow-hidden shadow-2xl ${TIER_GLOW[tierLevel]}`}
-              style={{border:"2px solid rgba(124,58,237,0.4)"}}>
-              {/* Image area */}
-              <div className={`aspect-square bg-gradient-to-br ${TIER_COLORS[tierLevel]} flex items-center justify-center relative`}>
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.08)_0%,transparent_70%)]"/>
-                <div className="text-center z-10 p-6">
-                  <div className="text-6xl mb-3">
-                    {tierLevel===5?"⭐":tierLevel===4?"💜":tierLevel===3?"💚":tierLevel===2?"🔵":"⚪"}
-                  </div>
-                  <div className="text-white/60 text-sm">Your NFT image will appear here</div>
-                  <div className="text-white/30 text-xs mt-1">Generated when minted on Hedera</div>
-                </div>
-              </div>
-
-              {/* Metadata */}
-              <div className="p-5 bg-gray-900/90">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <div className="font-bold text-lg">{team.name}</div>
-                    <div className={`text-sm font-semibold bg-gradient-to-r ${TIER_COLORS[tierLevel]} bg-clip-text text-transparent`}>
-                      ✦ {TIER_LABELS[tierLevel]} Tier
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-3xl font-black text-violet-400">{preview.rarityScore}</div>
-                    <div className="text-xs text-white/40">rarity score</div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {preview.attributes.map(attr=>(
-                    <TraitCard key={attr.trait_type} traitType={attr.trait_type} value={attr.value} tier={attr.rarity_tier??1}/>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl text-sm text-center text-violet-300/80" style={{background:"rgba(124,58,237,0.1)",border:"1px solid rgba(124,58,237,0.2)"}}>
-              This is a preview — final traits are generated randomly at mint time and may vary slightly.
-            </div>
-
-            <button onClick={handleMint} disabled={minting}
-              className="w-full py-4 rounded-xl font-black text-white text-xl transition-all relative"
-              style={{
-                background: minting?"rgba(100,40,200,0.5)":"linear-gradient(135deg,#7c3aed,#c026d3)",
-                boxShadow: minting?"none":"0 4px 0 #4c1d95, 0 8px 32px rgba(124,58,237,0.5)",
-                cursor: minting?"wait":"pointer",
-              }}
-              onMouseDown={e=>{if(!minting){(e.currentTarget as HTMLElement).style.transform="translateY(3px)";(e.currentTarget as HTMLElement).style.boxShadow="0 1px 0 #4c1d95";}}}
-              onMouseUp={e=>{if(!minting){(e.currentTarget as HTMLElement).style.transform="";(e.currentTarget as HTMLElement).style.boxShadow="0 4px 0 #4c1d95, 0 8px 32px rgba(124,58,237,0.5)";}}}
-              onMouseLeave={e=>{if(!minting){(e.currentTarget as HTMLElement).style.transform="";(e.currentTarget as HTMLElement).style.boxShadow="0 4px 0 #4c1d95, 0 8px 32px rgba(124,58,237,0.5)";}}}
-            >
-              {minting?(
-                <span className="flex items-center justify-center gap-3">
-                  <span className="w-6 h-6 rounded-full border-2 border-white/30 border-t-white animate-spin"/>
-                  Minting on Hedera…
-                </span>
-              ):"🚀 Mint My NFT on Hedera ✦"}
-            </button>
-          </div>
-        )}
-
-        {/* ── STEP 4: Minted! ──────────────────────────────────────────────── */}
-        {step===4&&minted&&(
+        {/* ── STEP 3: Claimed! ──────────────────────────────────────────────── */}
+        {step===3&&(
           <div className="space-y-5 text-center">
-            <div className="py-6">
+            <div className="py-4">
               <div className="text-7xl mb-4 animate-bounce">🎉</div>
-              <h2 className="text-3xl font-black mb-2">NFT Minted!</h2>
+              <h2 className="text-3xl font-black mb-2">It's yours!</h2>
               <p className="text-white/50 text-sm max-w-xs mx-auto">
-                Your NFT is now permanently on the Hedera blockchain. Open HashPack to see it in your wallet!
+                Your NFT is now in your HashPack wallet. Open HashPack → Collectibles to see it.
               </p>
             </div>
 
-            <div className="bg-white/5 rounded-2xl border border-white/10 p-5 text-left space-y-3">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-white/50">Serial Number</span>
-                <span className="font-mono font-bold text-violet-300">#{minted.serialNumber}</span>
-              </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-white/50">Rarity</span>
-                <span className="font-bold">{minted.tierName}</span>
-              </div>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-white/50">Transaction</span>
-                <span className="font-mono text-xs text-white/40 truncate max-w-40">{minted.transactionId}</span>
-              </div>
-            </div>
+            <NFTCard
+              memberName={memberName} teamName={teamName} tier={tier}
+              attributes={attributes} rarityScore={rarityScore} imageUri={imageUri} claimed
+            />
 
-            <div className="grid grid-cols-1 gap-3">
-              <a href={`https://hashscan.io/testnet/transaction/${minted.transactionId}`}
-                target="_blank" rel="noopener noreferrer"
-                className="block py-3 rounded-xl text-sm font-medium transition-all"
-                style={{background:"rgba(124,58,237,0.2)",border:"1px solid rgba(124,58,237,0.4)",color:"rgb(196,181,253)"}}>
-                🔍 View on HashScan Explorer →
-              </a>
-              <div className="p-4 rounded-xl text-sm text-emerald-300/80" style={{background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.3)"}}>
-                <strong>🦊 Find your NFT in HashPack:</strong><br/>
-                Open HashPack → Collectibles tab → look for the Minthon collection
+            <div className="space-y-3">
+              {claimTxId&&(
+                <a href={`https://hashscan.io/${appNetwork}/transaction/${claimTxId}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="block py-3 rounded-xl text-sm font-medium transition-all"
+                  style={{background:"rgba(124,58,237,0.2)",border:"1px solid rgba(124,58,237,0.4)",color:"rgb(196,181,253)"}}>
+                  🔍 View Transaction on HashScan →
+                </a>
+              )}
+              <div className="p-4 rounded-xl text-sm text-left" style={{background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.3)"}}>
+                <strong className="text-emerald-300">Find your NFT in HashPack:</strong>
+                <ol className="mt-2 space-y-1 text-white/60 list-decimal list-inside">
+                  <li>Open HashPack extension</li>
+                  <li>Click the <strong className="text-white">Collectibles</strong> tab</li>
+                  <li>Look for the <strong className="text-white">Minthon</strong> collection</li>
+                </ol>
               </div>
+              <p className="text-xs text-white/25">
+                Serial #{serialNumber} · Thank you for helping children with cancer. 💜
+              </p>
             </div>
-
-            <p className="text-xs text-white/25 mt-4">
-              Thank you for helping children with cancer. Your fundraising made a real difference. 💜
-            </p>
           </div>
         )}
       </div>
