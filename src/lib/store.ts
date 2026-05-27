@@ -11,6 +11,8 @@ const DEFAULT_STATE: AdminState = {
   teams: [], tiers: DEFAULT_TIERS, traitPool: [],
   layers: DEFAULT_LAYERS,
   tokenId: null, collectionName: "Minthon 2025 — Cure Kids Cancer",
+  collectionCreator: "Minthon",
+  collectionDescription: "NFTs earned by students through fundraising for pediatric cancer research.",
   totalDonations: 0, lastUpdated: new Date().toISOString(),
 };
 

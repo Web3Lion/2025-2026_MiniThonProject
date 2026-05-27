@@ -6,11 +6,13 @@ import { serverCreateNFTCollection, isValidHederaAccountId, HederaCredentials } 
 export async function GET() {
   const store = readStore();
   return NextResponse.json({
-    tokenId:        store.tokenId,
-    collectionName: store.collectionName,
-    tiers:          store.tiers,
-    traitPool:      store.traitPool ?? [],
-    layers:         store.layers ?? [],
+    tokenId:               store.tokenId,
+    collectionName:        store.collectionName,
+    collectionCreator:     store.collectionCreator ?? "",
+    collectionDescription: store.collectionDescription ?? "",
+    tiers:                 store.tiers,
+    traitPool:             store.traitPool ?? [],
+    layers:                store.layers ?? [],
   });
 }
 
@@ -28,6 +30,15 @@ export async function POST(req: NextRequest) {
 
     case "set_collection_name": {
       const store = readStore(); store.collectionName = body.name; writeStore(store);
+      return NextResponse.json({ success: true });
+    }
+
+    case "save_collection_meta": {
+      const store = readStore();
+      if (body.collectionName       !== undefined) store.collectionName        = body.collectionName;
+      if (body.collectionCreator    !== undefined) store.collectionCreator     = body.collectionCreator;
+      if (body.collectionDescription !== undefined) store.collectionDescription = body.collectionDescription;
+      writeStore(store);
       return NextResponse.json({ success: true });
     }
 

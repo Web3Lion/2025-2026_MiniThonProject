@@ -124,6 +124,8 @@ export interface AdminState {
   layers: LayerDefinition[];
   tokenId: string | null;
   collectionName: string;
+  collectionCreator?: string;
+  collectionDescription?: string;
   totalDonations: number;
   lastUpdated: string;
 }

@@ -938,6 +938,9 @@ function BatchMint({creds,traits,network}:{creds:WalletCredentials|null;traits:E
   const[confirmed,setConfirmed]=useState(false);
   const[tokenId,setTokenId]=useState("");
   const[collectionName,setCollectionName]=useState("Minthon 2025");
+  const[collectionCreator,setCollectionCreator]=useState("");
+  const[collectionDescription,setCollectionDescription]=useState("");
+  const[savingMeta,setSavingMeta]=useState(false);
   const[layers,setLayers]=useState<LayerDefinition[]>(DEFAULT_LAYERS);
   const abortRef=useRef(false);
   const{msg,flash}=useFlash();
@@ -946,10 +949,19 @@ function BatchMint({creds,traits,network}:{creds:WalletCredentials|null;traits:E
     fetch("/api/collection").then(r=>r.json()).then(d=>{
       if(d.tokenId)setTokenId(d.tokenId);
       if(d.collectionName)setCollectionName(d.collectionName);
+      if(d.collectionCreator)setCollectionCreator(d.collectionCreator);
+      if(d.collectionDescription)setCollectionDescription(d.collectionDescription);
       if(d.layers?.length)setLayers(d.layers);
     });
     doLoadPreview();
   },[]);
+
+  async function saveMeta(){
+    setSavingMeta(true);
+    await fetch("/api/collection",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:"save_collection_meta",collectionName,collectionCreator,collectionDescription})});
+    setSavingMeta(false);flash("ok","NFT info saved");
+  }
 
   async function doLoadPreview(){
     setLoadingPreview(true);
@@ -983,7 +995,7 @@ function BatchMint({creds,traits,network}:{creds:WalletCredentials|null;traits:E
         let compositeImage:string|undefined;
         if(layerImages.length>0)compositeImage=await compositeNFT(layerImages);
         const res=await fetch("/api/mint",{method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({action:"batch_mint",teamId:item.teamId,memberId:item.memberId,walletAddress:item.walletAddress,compositeImage,pinataApiKey:pinataKey,pinataApiSecret:pinataSecret,credentials:{accountId:creds.accountId,privateKey:creds.privateKey,network:creds.network}})});
+          body:JSON.stringify({action:"batch_mint",teamId:item.teamId,memberId:item.memberId,walletAddress:item.walletAddress,compositeImage,pinataApiKey:pinataKey,pinataApiSecret:pinataSecret,collectionName,collectionCreator,collectionDescription,credentials:{accountId:creds.accountId,privateKey:creds.privateKey,network:creds.network}})});
         const data=await res.json();
         if(!data.success)throw new Error(data.error??"Mint failed");
         setProgress(p=>({...p,done:p.done+1}));
@@ -1012,6 +1024,30 @@ function BatchMint({creds,traits,network}:{creds:WalletCredentials|null;traits:E
             <span>{item.ok?"✓":"○"}</span><span>{item.label}</span>
           </div>))}
       </div>
+      {/* NFT metadata info */}
+      <div className="rounded-xl border p-4 mb-5 space-y-3" style={{background:"rgba(0,0,0,0.15)",borderColor:"var(--border)"}}>
+        <div className="text-xs font-semibold mb-1" style={{color:"var(--text-muted)"}}>NFT Metadata — written into every token's JSON on Pinata</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="text-xs mb-1 block" style={{color:"var(--text-muted)"}}>Collection Name <span style={{color:"var(--text-faint)"}}>(used in token name)</span></label>
+            <input value={collectionName} onChange={e=>setCollectionName(e.target.value)} placeholder="Minthon 2025"
+              className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none" style={{background:"var(--bg-card)",border:"1px solid var(--border)",color:"var(--text-primary)"}}/></div>
+          <div><label className="text-xs mb-1 block" style={{color:"var(--text-muted)"}}>Creator</label>
+            <input value={collectionCreator} onChange={e=>setCollectionCreator(e.target.value)} placeholder="Your name or org"
+              className="w-full rounded-xl px-3 py-2 text-sm focus:outline-none" style={{background:"var(--bg-card)",border:"1px solid var(--border)",color:"var(--text-primary)"}}/></div>
+        </div>
+        <div><label className="text-xs mb-1 block" style={{color:"var(--text-muted)"}}>Collection Description</label>
+          <textarea value={collectionDescription} onChange={e=>setCollectionDescription(e.target.value)} rows={2} placeholder="Describe the collection and its cause…"
+            className="w-full rounded-xl px-3 py-2 text-sm resize-none focus:outline-none" style={{background:"var(--bg-card)",border:"1px solid var(--border)",color:"var(--text-primary)"}}/></div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs" style={{color:"var(--text-faint)"}}>
+            Each NFT will be named <span className="font-mono" style={{color:"var(--text-muted)"}}>{collectionName||"…"} #1</span>, <span className="font-mono" style={{color:"var(--text-muted)"}}>#{2}</span>…
+          </div>
+          <button onClick={saveMeta} disabled={savingMeta} className="px-4 py-1.5 rounded-xl text-xs font-medium text-white disabled:opacity-40 transition-all" style={{background:"var(--accent)"}}>
+            {savingMeta?"Saving…":"Save NFT Info"}
+          </button>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 mb-5">
         <div><label className="text-xs mb-1 block" style={{color:"var(--text-muted)"}}>Pinata API Key</label>
           <input type="password" value={pinataKey} onChange={e=>setPinataKey(e.target.value)} placeholder="From pinata.cloud"
@@ -1088,7 +1124,7 @@ export default function CollectionPage(){
   const creds=wallet.getCredentials(); // live derived value
 
   const[traits,setTraits]=useState<EnrichedTrait[]>([]);
-  const[tab,setTab]=useState<"collection"|"tiers"|"wallets">("collection");
+  const[tab,setTab]=useState<"collection"|"tiers"|"wallets"|"mint">("collection");
 
   async function handleLogout(){await fetch("/api/auth",{method:"DELETE"});window.location.href="/admin/login";}
 
@@ -1110,7 +1146,7 @@ export default function CollectionPage(){
       </header>
 
       <div className="flex gap-1 px-6 pt-4" style={{borderBottom:"1px solid var(--border)"}}>
-        {[{id:"collection",label:"Collection & Traits"},{id:"tiers",label:"Donation Tiers"},{id:"wallets",label:"Student Wallets"}].map(t=>(
+        {[{id:"collection",label:"Collection & Traits"},{id:"tiers",label:"Donation Tiers"},{id:"wallets",label:"Student Wallets"},{id:"mint",label:"Mint NFTs"}].map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id as typeof tab)}
             className="px-4 py-2.5 text-sm transition-all rounded-t-lg -mb-px border-b-2"
             style={{color:tab===t.id?"var(--text-primary)":"var(--text-faint)",borderBottomColor:tab===t.id?"var(--accent)":"transparent",background:tab===t.id?"var(--bg-card)":"transparent"}}>
@@ -1125,10 +1161,10 @@ export default function CollectionPage(){
           <LayerSetup/>
           <TokenCreator creds={creds} network={wallet.network}/>
           <TraitEditor onTraitsChange={setTraits}/>
-          <BatchMint creds={creds} traits={traits} network={wallet.network}/>
         </>}
         {tab==="tiers"&&<TierConfig/>}
         {tab==="wallets"&&<WalletGenerator creds={creds} network={wallet.network}/>}
+        {tab==="mint"&&<BatchMint creds={creds} traits={traits} network={wallet.network}/>}
       </div>
     </div>
     </ThemeProvider>

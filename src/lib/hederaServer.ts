@@ -199,8 +199,9 @@ export async function serverMintNFT(
     const privateKey = await parsePrivateKey(creds.privateKey);
     client.setOperator(treasuryId, privateKey);
 
-    const htsTokenId   = TokenId.fromString(tokenId);
-    const recipientId  = AccountId.fromString(recipientAccountId);
+    const htsTokenId  = TokenId.fromString(tokenId);
+    const recipientId = AccountId.fromString(recipientAccountId);
+    const isSelfMint  = recipientAccountId === creds.accountId;
 
     // Step 1: Mint to treasury
     const mintTx = await new TokenMintTransaction()
@@ -213,18 +214,15 @@ export async function serverMintNFT(
     const mintReceipt  = await mintResponse.getReceipt(client);
     const serialNumber = Number(mintReceipt.serials[0]);
 
-    // Step 2: Transfer from treasury to student wallet
-    const transferTx = await new TransferTransaction()
-      .addNftTransfer(
-        new NftId(htsTokenId, serialNumber),
-        treasuryId,
-        recipientId
-      )
-      .freezeWith(client);
-
-    const signedTransfer = await transferTx.sign(privateKey);
-    const transferResponse = await signedTransfer.execute(client);
-    await transferResponse.getReceipt(client); // confirm transfer
+    // Step 2: Transfer to recipient — skip if recipient IS the treasury (pre-mint flow)
+    if (!isSelfMint) {
+      const transferTx = await new TransferTransaction()
+        .addNftTransfer(new NftId(htsTokenId, serialNumber), treasuryId, recipientId)
+        .freezeWith(client);
+      const signedTransfer   = await transferTx.sign(privateKey);
+      const transferResponse = await signedTransfer.execute(client);
+      await transferResponse.getReceipt(client);
+    }
 
     return {
       success: true,

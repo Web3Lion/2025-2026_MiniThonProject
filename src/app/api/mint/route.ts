@@ -137,6 +137,150 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // ── Batch mint one NFT (composite → Pinata image → Pinata JSON → Hedera mint) ─
+    case "batch_mint": {
+      const { teamId, memberId, compositeImage, pinataApiKey, pinataApiSecret, credentials,
+              collectionName: reqName, collectionCreator: reqCreator, collectionDescription: reqDesc } = body;
+
+      if (!credentials?.accountId || !credentials?.privateKey || !credentials?.network)
+        return NextResponse.json({ error: "Hedera credentials required" }, { status: 400 });
+      if (!pinataApiKey || !pinataApiSecret)
+        return NextResponse.json({ error: "Pinata API key and secret required" }, { status: 400 });
+
+      const store = readStore();
+      if (!store.tokenId)
+        return NextResponse.json({ error: "NFT collection not created yet" }, { status: 503 });
+
+      const team   = store.teams.find(t => t.id === teamId);
+      if (!team)   return NextResponse.json({ error: "Team not found" }, { status: 404 });
+      const member = team.members.find(m => m.id === memberId);
+      if (!member) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+      if (member.mintedNFT)            return NextResponse.json({ success: true, skipped: true, serialNumber: member.mintedNFT.serialNumber });
+      if ((member as any).mintPending) return NextResponse.json({ error: "Mint already in progress for this member" }, { status: 409 });
+
+      // Lock immediately to prevent duplicate from a concurrent request
+      {
+        const lockStore  = readStore();
+        const lockTeam   = lockStore.teams.find(t => t.id === teamId);
+        const lockMember = lockTeam?.members.find(m => m.id === memberId);
+        if (!lockMember) return NextResponse.json({ error: "Member not found" }, { status: 404 });
+        if (lockMember.mintedNFT) return NextResponse.json({ success: true, skipped: true, serialNumber: lockMember.mintedNFT.serialNumber });
+        (lockMember as any).mintPending = true;
+        writeStore(lockStore);
+      }
+
+      const creds: HederaCredentials = credentials;
+      const categories = (store.layers ?? []).sort((a,b) => a.order-b.order).map(l => l.name.toLowerCase());
+      const traits      = generateTraits(store.traitPool ?? [], categories, team.currentTier as TierLevel);
+      const attributes  = traitsToAttributes(traits);
+      const tierName    = DEFAULT_TIERS[(team.currentTier as number) - 1]?.label ?? "Common";
+
+      // Sequential edition number based on already-minted count
+      const edition = store.teams.flatMap(t => t.members).filter(m => m.mintedNFT).length + 1;
+
+      const nftCollectionName = reqName     ?? store.collectionName;
+      const creator           = reqCreator  ?? store.collectionCreator ?? store.collectionName;
+      const description       = reqDesc     ?? store.collectionDescription ??
+        `This NFT was earned by ${member.name} of team "${team.name}" through fundraising for pediatric cancer research.`;
+      const nftName = `${nftCollectionName} #${edition}`;
+      const slug    = nftCollectionName.replace(/\s+/g, "-").toLowerCase();
+
+      function clearPendingLock() {
+        try {
+          const s = readStore();
+          const t = s.teams.find(t => t.id === teamId);
+          const m = t?.members.find(m => m.id === memberId);
+          if (m) { delete (m as any).mintPending; writeStore(s); }
+        } catch { /* best-effort */ }
+      }
+
+      try {
+        // 1. Upload composite image to IPFS
+        let imageUri = "ipfs://placeholder";
+        if (compositeImage) {
+          const imgResult = await serverUploadImageToIPFS(
+            compositeImage, `${slug}-${edition}.png`, pinataApiKey, pinataApiSecret
+          );
+          if (imgResult.success && imgResult.ipfsUri) imageUri = imgResult.ipfsUri;
+        }
+
+        // 2. Build metadata (HANGRY BARBOONS / HIP-412 compatible format)
+        const metadata = {
+          creator,
+          description,
+          format: "none",
+          name:   nftName,
+          image:  imageUri,
+          type:   "image/png",
+          properties: { edition },
+          files: [{
+            uri:  imageUri,
+            type: "image/png",
+            metadata: { name: nftName, creator },
+          }],
+          attributes: attributes.map((a: {trait_type:string;value:string}) => ({
+            trait_type: a.trait_type,
+            value:      a.value,
+          })),
+        };
+
+        // 3. Upload metadata JSON to IPFS
+        const metaResult = await serverUploadMetadataToIPFS(
+          metadata, `${slug}-meta-${edition}.json`, pinataApiKey, pinataApiSecret
+        );
+        if (!metaResult.success || !metaResult.ipfsUri) {
+          clearPendingLock();
+          return NextResponse.json({ error: `Metadata upload failed: ${metaResult.error}` }, { status: 502 });
+        }
+
+        // 4. Mint to treasury (student claims later)
+        const mintResult = await serverMintNFT(
+          creds, store.tokenId,
+          creds.accountId,
+          metaResult.ipfsUri
+        );
+        if (!mintResult.success || !mintResult.serialNumber) {
+          clearPendingLock();
+          return NextResponse.json({ error: `Hedera mint failed: ${mintResult.error}` }, { status: 502 });
+        }
+
+        // 5. Record as preminted in store (replaces the pending lock)
+        const freshStore  = readStore();
+        const freshTeam   = freshStore.teams.find(t => t.id === teamId);
+        const freshMember = freshTeam?.members.find(m => m.id === memberId);
+        if (freshMember) {
+          delete (freshMember as any).mintPending;
+          freshMember.mintedNFT = {
+            serialNumber:       mintResult.serialNumber,
+            tokenId:            store.tokenId,
+            transactionId:      mintResult.transactionId ?? "",
+            metadata:           metadata as any,
+            mintedAt:           new Date().toISOString(),
+            walletAddress:      member.walletAddress ?? "",
+            status:             "preminted",
+            imageUri,
+            metadataUri:        metaResult.ipfsUri,
+            compositeImageData: compositeImage,
+          };
+          writeStore(freshStore);
+        }
+
+        return NextResponse.json({
+          success:       true,
+          serialNumber:  mintResult.serialNumber,
+          transactionId: mintResult.transactionId,
+          imageUri,
+          metadataUri:   metaResult.ipfsUri,
+          edition,
+          tierName,
+          nftName,
+        });
+      } catch (err) {
+        clearPendingLock();
+        throw err;
+      }
+    }
+
     // ── Student claims their pre-minted NFT (just a transfer) ─────────────────
     case "claim": {
       const { walletAddress, credentials } = body;
