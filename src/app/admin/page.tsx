@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { Team, TierLevel } from "@/types";
 import { DEFAULT_TIERS, formatDollars } from "@/lib/tierConfig";
@@ -153,6 +154,7 @@ function TierProgress({total,currentTier}:{total:number;currentTier:TierLevel}){
 // MAIN ADMIN PAGE
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function AdminPage(){
+  const router=useRouter();
   const[teams,setTeams]=useState<Team[]>([]);
   const[loading,setLoading]=useState(true);
   const[activeTeam,setActiveTeam]=useState<string|null>(null);
@@ -327,11 +329,6 @@ export default function AdminPage(){
           <ThemeSwitcher/>
           <span style={{color:"var(--text-muted)"}}>{teams.length} teams</span>
           <span className="text-emerald-400 font-medium">{formatDollars(totalDonations)} raised</span>
-          <Link href="/admin/collection"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-            style={{background:"rgba(124,58,237,0.2)",border:"1px solid rgba(124,58,237,0.4)",color:"rgb(196,181,253)"}}>
-            🎨 NFT Collection Setup
-          </Link>
           <button onClick={async()=>{await fetch("/api/auth",{method:"DELETE"});window.location.href="/admin/login";}}
             className="px-3 py-1 rounded-lg border transition-all" style={{borderColor:"var(--border)",color:"var(--text-faint)"}}>
             Logout
@@ -349,6 +346,10 @@ export default function AdminPage(){
       {/* Tabs */}
       <div className="flex items-center justify-between px-6 mt-4">
         <div className="flex gap-1">
+          <button onClick={()=>router.push("/admin/collection")}
+            className="px-4 py-2 rounded-lg text-sm transition-all text-violet-400 hover:text-violet-300 hover:bg-violet-500/10 flex items-center gap-1.5">
+            🎨 Collection
+          </button>
           {(["teams","leaderboard","mint","settings"] as const).map(t=>(
             <button key={t} onClick={()=>setTab(t)}
               className={`px-4 py-2 rounded-lg text-sm capitalize transition-all ${tab===t?"bg-white/10 text-white":"text-white/40 hover:text-white/70"}`}>
@@ -628,7 +629,7 @@ export default function AdminPage(){
             )}
 
             {/* Mint button */}
-            {eligible.length>0&&!minting&&mintProgress.done+mintProgress.failed<mintProgress.total&&(
+            {eligible.length>0&&!minting&&(mintProgress.total===0||mintProgress.done+mintProgress.failed<mintProgress.total)&&(
               <div className="space-y-3">
                 <label className="flex items-start gap-3 p-4 rounded-xl border cursor-pointer"
                   style={{background:"rgba(124,58,237,0.1)",borderColor:"rgba(124,58,237,0.3)"}}>

@@ -4,7 +4,87 @@
  * Supports CSV with optional team name column: "Name, Team Name"
  */
 
+import { useState, useEffect, useCallback } from "react";
 import { StudentWallet } from "@/types";
+
+// ─── useHashPack Hook ─────────────────────────────────────────────────────────
+// Attempts to connect via the HashPack browser extension (window.hashpack).
+// Falls back to a window.prompt() for manual Hedera account ID entry when the
+// extension is not installed — sufficient for school-event use where students
+// know their account IDs.
+
+export type HashPackConnectionState = "idle" | "connecting" | "connected" | "not_installed";
+
+export interface HashPackHook {
+  connectionState: HashPackConnectionState;
+  accountId: string | null;
+  isInstalled: boolean;
+  connect: () => void;
+  disconnect: () => void;
+}
+
+const SESSION_KEY = "minthon_connected_account";
+
+export function useHashPack(_network: "testnet" | "mainnet"): HashPackHook {
+  const [connectionState, setConnectionState] = useState<HashPackConnectionState>("idle");
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  // Restore session on mount
+  useEffect(() => {
+    const stored = sessionStorage.getItem(SESSION_KEY);
+    if (stored) {
+      setAccountId(stored);
+      setConnectionState("connected");
+    }
+    // Detect HashPack extension (injects window.hashpack)
+    setIsInstalled(typeof window !== "undefined" && !!(window as unknown as Record<string, unknown>).hashpack);
+  }, []);
+
+  const connect = useCallback(async () => {
+    const win = typeof window !== "undefined" ? (window as unknown as Record<string, unknown>) : null;
+    const hp = win?.hashpack as { requestAccounts?: () => Promise<string[]> } | undefined;
+
+    if (hp?.requestAccounts) {
+      // Real HashPack extension path
+      setConnectionState("connecting");
+      try {
+        const accounts = await hp.requestAccounts();
+        const id = accounts?.[0] ?? null;
+        if (id) {
+          setAccountId(id);
+          setConnectionState("connected");
+          sessionStorage.setItem(SESSION_KEY, id);
+        } else {
+          setConnectionState("idle");
+        }
+      } catch {
+        setConnectionState("idle");
+      }
+    } else {
+      // Manual fallback: prompt for account ID
+      setConnectionState("connecting");
+      const id = window.prompt("Enter your Hedera Account ID (e.g. 0.0.12345):");
+      if (id && /^\d+\.\d+\.\d+$/.test(id.trim())) {
+        setAccountId(id.trim());
+        setConnectionState("connected");
+        sessionStorage.setItem(SESSION_KEY, id.trim());
+      } else {
+        setConnectionState(id === null ? "idle" : "not_installed");
+      }
+    }
+  }, []);
+
+  const disconnect = useCallback(() => {
+    setAccountId(null);
+    setConnectionState("idle");
+    sessionStorage.removeItem(SESSION_KEY);
+  }, []);
+
+  return { connectionState, accountId, isInstalled, connect, disconnect };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface WalletGenCredentials {
   payerAccountId: string;

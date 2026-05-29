@@ -239,7 +239,7 @@ export default function MintPage(){
         </p>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 pb-16">
+      <div className="max-w-lg mx-auto px-4 pb-36">
         <Steps current={step}/>
 
         {/* Error */}
@@ -435,6 +435,51 @@ export default function MintPage(){
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Sticky bottom mint/claim button ─────────────────────────────────── */}
+      <div className="fixed bottom-0 inset-x-0 z-40 px-4 pb-6 pt-3"
+        style={{background:"linear-gradient(to top,rgba(3,7,18,0.98) 70%,transparent)"}}>
+        <div className="max-w-lg mx-auto">
+          {step===1&&hashpack.connectionState!=="connecting"&&hashpack.connectionState!=="not_installed"&&(
+            <button onClick={hashpack.connect}
+              className="w-full py-4 rounded-xl font-black text-white text-lg transition-all"
+              style={{background:"linear-gradient(135deg,#7c3aed,#c026d3)",boxShadow:"0 4px 0 #4c1d95,0 8px 24px rgba(124,58,237,0.45)"}}>
+              🔗 Connect &amp; Mint My NFT
+            </button>
+          )}
+
+          {step===2&&nftStatus==="preminted"&&!claimed&&(
+            <button onClick={handleClaim} disabled={claiming||!hasServerCreds}
+              className="w-full py-4 rounded-xl font-black text-white text-xl disabled:opacity-30 transition-all"
+              style={{
+                background:claiming?"rgba(100,40,200,0.5)":"linear-gradient(135deg,#7c3aed,#c026d3)",
+                boxShadow:claiming?"none":"0 4px 0 #4c1d95,0 8px 32px rgba(124,58,237,0.5)",
+                cursor:claiming?"wait":"pointer",
+              }}>
+              {claiming?(
+                <span className="flex items-center justify-center gap-3">
+                  <span className="w-6 h-6 rounded-full border-2 border-white/30 border-t-white animate-spin"/>
+                  Minting to your wallet…
+                </span>
+              ):"🎁 Mint My NFT →"}
+            </button>
+          )}
+
+          {step===2&&nftStatus===null&&(
+            <div className="w-full py-4 rounded-xl font-bold text-center text-amber-300/70 text-sm"
+              style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.2)"}}>
+              ⏳ Waiting for teacher to pre-mint your NFT
+            </div>
+          )}
+
+          {(step===3||(step===2&&nftStatus==="claimed"))&&(
+            <div className="w-full py-4 rounded-xl font-bold text-center text-emerald-300 text-sm"
+              style={{background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.3)"}}>
+              ✓ NFT minted &amp; in your wallet!
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
