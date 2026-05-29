@@ -1,8 +1,4 @@
-/**
- * Student Wallet Generator
- * Creates Hedera ED25519 accounts server-side.
- * Supports CSV with optional team name column: "Name, Team Name"
- */
+"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { StudentWallet } from "@/types";

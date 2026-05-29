@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Team, TierLevel } from "@/types";
 import { DEFAULT_TIERS, formatDollars } from "@/lib/tierConfig";
 import { ThemeProvider, ThemeSwitcher } from "@/components/ThemeProvider";
+import { useWalletCredentials } from "@/lib/useWalletCredentials";
 
 // ─── NFT Preview Modal ────────────────────────────────────────────────────────
 const TIER_GRAD: Record<number,string> = {
@@ -175,10 +176,8 @@ export default function AdminPage(){
   const[pinataSecret,setPinataSecret]=useState("");
   const[pinataKeysSaved,setPinataKeysSaved]=useState(false);
 
-  // ── Wallet credentials (from localStorage set in Collection Setup) ──────────
-  const[adminAccountId,setAdminAccountId]=useState("");
-  const[adminPrivateKey,setAdminPrivateKey]=useState("");
-  const[adminNetwork,setAdminNetwork]=useState("testnet");
+  // ── Wallet credentials (live — handles locked/unlocked/none states) ──────────
+  const w=useWalletCredentials();
 
   // ── Mint state ──────────────────────────────────────────────────────────────
   const[mintLog,setMintLog]=useState<Array<{name:string;status:"pending"|"running"|"ok"|"err";msg?:string}>>([]);
@@ -200,13 +199,6 @@ export default function AdminPage(){
     loadTeams();
     // Load Pinata keys
     try{const p=localStorage.getItem("minthon_pinata");if(p){const j=JSON.parse(p);setPinataKey(j.key??"");setPinataSecret(j.secret??"");setPinataKeysSaved(true);}}catch{}
-    // Load wallet credentials
-    try{
-      const w=localStorage.getItem("minthon_wallet_v2");
-      if(w){const j=JSON.parse(w);setAdminAccountId(j.accountId??"");setAdminNetwork(j.network??"testnet");
-        if(j.encrypted===false)setAdminPrivateKey(j.privateKey??"");
-      }
-    }catch{}
   },[loadTeams]);
 
   function savePinataKeys(){
@@ -271,7 +263,7 @@ export default function AdminPage(){
   const mintPct=mintProgress.total>0?Math.round(((mintProgress.done+mintProgress.failed)/mintProgress.total)*100):0;
 
   async function startBatchMint(){
-    if(!adminAccountId||!adminPrivateKey){flash("err","No wallet key — go to Collection Setup → Step 1 and unlock your key");return;}
+    if(!w.isReady){flash("err","Wallet credentials not ready — enter your Account ID and private key above");return;}
     if(!pinataKey||!pinataSecret){flash("err","Enter and save your Pinata API keys in the Mint tab above");return;}
     if(!eligible.length){flash("err","No eligible members to mint");return;}
     mintAbortRef.current=false;
@@ -291,7 +283,7 @@ export default function AdminPage(){
             memberId:item.memberId,
             pinataApiKey:pinataKey,
             pinataApiSecret:pinataSecret,
-            credentials:{accountId:adminAccountId,privateKey:adminPrivateKey,network:adminNetwork},
+            credentials:{accountId:w.accountId,privateKey:w.privateKey,network:w.network},
           })});
         const data=await res.json();
         if(!data.success)throw new Error(data.error??"Mint failed");
@@ -525,6 +517,33 @@ export default function AdminPage(){
         {tab==="mint"&&(
           <div className="max-w-2xl space-y-5">
 
+            {/* Network selector */}
+            <div className="rounded-2xl border p-5 bg-white/5 border-white/10">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-semibold text-white">Hedera Network</h3>
+                  <p className="text-xs text-white/40 mt-0.5">Always test on testnet before minting on mainnet</p>
+                </div>
+                <div className="flex rounded-xl overflow-hidden shrink-0" style={{border:"1px solid rgba(255,255,255,0.12)"}}>
+                  {(["testnet","mainnet"] as const).map(n=>(
+                    <button key={n} onClick={()=>w.setNetwork(n)}
+                      className="px-5 py-2.5 text-sm font-semibold capitalize transition-all"
+                      style={{
+                        background:w.network===n?(n==="testnet"?"rgba(245,158,11,0.55)":"rgba(16,185,129,0.55)"):"rgba(255,255,255,0.04)",
+                        color:w.network===n?"white":"rgba(255,255,255,0.35)",
+                      }}>
+                      {n==="testnet"?"🧪 Testnet":"🌐 Mainnet"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {w.network==="mainnet"&&(
+                <div className="mt-3 p-3 rounded-xl text-xs" style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.35)",color:"rgb(252,165,165)"}}>
+                  ⚠ MAINNET selected — NFTs will use real HBAR and cannot be undone. Confirm you have tested on testnet first.
+                </div>
+              )}
+            </div>
+
             {/* Pinata Keys */}
             <div className="rounded-2xl border p-5 space-y-4 bg-white/5 border-white/10">
               <div className="flex items-center justify-between">
@@ -553,23 +572,67 @@ export default function AdminPage(){
               </div>
             </div>
 
-            {/* Wallet status */}
-            <div className="rounded-2xl border p-5 bg-white/5 border-white/10">
-              <h3 className="font-semibold text-white mb-3">Hedera Wallet Status</h3>
-              {adminAccountId?(
+            {/* Wallet credentials — inline entry/unlock */}
+            <div className="rounded-2xl border p-5 bg-white/5 border-white/10 space-y-3">
+              <h3 className="font-semibold text-white">Hedera Wallet Credentials</h3>
+
+              {/* LOCKED: show password unlock */}
+              {w.storageState==="locked"&&(
+                <>
+                  <div className="p-3 rounded-xl text-sm" style={{background:"rgba(124,58,237,0.1)",border:"1px solid rgba(124,58,237,0.3)"}}>
+                    <div className="text-violet-300 font-medium">🔒 Encrypted credentials found</div>
+                    <div className="text-xs text-white/40 mt-0.5">Account: <span className="font-mono">{w.accountId}</span> · {w.network}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="password" value={w.unlockPassword} onChange={e=>w.setUnlockPassword(e.target.value)}
+                      onKeyDown={e=>e.key==="Enter"&&w.unlock()}
+                      placeholder="Enter encryption password to unlock"
+                      className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-500 text-white placeholder-white/30"/>
+                    <button onClick={w.unlock} disabled={!w.unlockPassword||w.unlocking}
+                      className="px-4 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-40"
+                      style={{background:"linear-gradient(135deg,#7c3aed,#c026d3)"}}>
+                      {w.unlocking?"…":"Unlock 🔓"}
+                    </button>
+                  </div>
+                  {w.unlockError&&<div className="text-xs text-red-400 bg-red-900/20 border border-red-700/30 rounded-xl p-2">{w.unlockError}</div>}
+                </>
+              )}
+
+              {/* READY: show green status */}
+              {w.isReady&&(
                 <div className="flex items-center gap-3 p-3 rounded-xl" style={{background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.3)"}}>
                   <span className="text-emerald-400 text-lg">✓</span>
                   <div>
-                    <div className="text-sm text-emerald-300 font-medium font-mono">{adminAccountId}</div>
-                    <div className="text-xs text-white/40">{adminNetwork} · {adminPrivateKey?"Key loaded and ready":"Key is encrypted — go to Collection Setup → Step 1 to unlock"}</div>
+                    <div className="text-sm text-emerald-300 font-medium font-mono">{w.accountId}</div>
+                    <div className="text-xs text-white/40">{w.network} · Key loaded and ready</div>
                   </div>
+                  <button onClick={w.clearCredentials} className="ml-auto text-xs text-white/30 hover:text-white/60">Clear</button>
                 </div>
-              ):(
-                <div className="flex items-center gap-3 p-3 rounded-xl" style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)"}}>
-                  <span className="text-amber-400 text-lg">⚠</span>
+              )}
+
+              {/* NOT READY and NOT LOCKED: show entry form */}
+              {!w.isReady&&w.storageState!=="locked"&&(
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl text-sm" style={{background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.3)"}}>
+                    <div className="text-amber-300 font-medium">⚠ No credentials loaded</div>
+                    <div className="text-xs text-white/40 mt-0.5">Enter below, or save permanently via <Link href="/admin/collection" className="text-violet-400 hover:underline">NFT Collection Setup → Step 1</Link></div>
+                  </div>
                   <div>
-                    <div className="text-sm text-amber-300">No wallet credentials found</div>
-                    <div className="text-xs text-white/40">Go to <Link href="/admin/collection" className="text-violet-400 hover:underline">NFT Collection Setup → Step 1</Link> and enter your Hedera credentials</div>
+                    <label className="text-xs text-white/50 mb-1 block">Account ID</label>
+                    <input value={w.accountId} onChange={e=>w.setAccountId(e.target.value)} placeholder="0.0.12345"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-violet-500 text-white placeholder-white/20"/>
+                  </div>
+                  <div>
+                    <label className="text-xs text-white/50 mb-1 flex items-center justify-between">
+                      <span>Private Key</span>
+                      {w.validating&&<span className="animate-pulse text-white/30">Validating…</span>}
+                      {!w.validating&&w.keyValid===true&&<span className="text-emerald-400">✓ Valid</span>}
+                      {!w.validating&&w.keyValid===false&&<span className="text-red-400">✗ {w.keyError}</span>}
+                    </label>
+                    <input type="password" value={w.privateKey} onChange={e=>w.setPrivateKey(e.target.value)}
+                      placeholder="Paste Hedera private key (DER or hex)"
+                      className="w-full bg-white/5 border rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none text-white placeholder-white/20"
+                      style={{borderColor:w.keyValid===true?"rgb(16,185,129)":w.keyValid===false?"rgb(239,68,68)":"rgba(255,255,255,0.1)"}}/>
                   </div>
                 </div>
               )}
@@ -578,7 +641,7 @@ export default function AdminPage(){
             {/* Readiness checklist */}
             <div className="grid grid-cols-2 gap-2">
               {[
-                {ok:Boolean(adminAccountId&&adminPrivateKey),label:"Wallet credentials ready"},
+                {ok:w.isReady,label:"Wallet credentials ready"},
                 {ok:pinataKeysSaved&&Boolean(pinataKey),label:"Pinata keys saved"},
                 {ok:eligible.length>0,label:`${eligible.length} members ready to mint`},
                 {ok:Boolean(teams.length),label:"Teams created"},
@@ -599,16 +662,21 @@ export default function AdminPage(){
                 </div>
                 <div className="divide-y divide-white/5 max-h-56 overflow-y-auto">
                   {eligible.map((item,i)=>{const l=mintLog[i];return(
-                    <div key={item.memberId} className="px-4 py-2 grid grid-cols-12 gap-2 items-center text-sm">
-                      <span className="col-span-3 text-white/60 truncate">{item.teamName}</span>
-                      <span className="col-span-3 text-white font-medium truncate">{item.memberName}</span>
-                      <span className={`col-span-2 text-xs font-medium ${TIER_COLOR[item.tier]}`}>{DEFAULT_TIERS[item.tier-1].label}</span>
-                      <span className="col-span-3 text-xs font-mono text-white/30 truncate">{item.wallet}</span>
-                      <span className="col-span-1 text-right text-sm">
-                        {l?.status==="ok"&&<span className="text-emerald-400" title={l.msg}>✓</span>}
-                        {l?.status==="err"&&<span className="text-red-400" title={l.msg}>✗</span>}
-                        {l?.status==="running"&&<span className="inline-block w-3 h-3 rounded-full border border-violet-400 border-t-transparent animate-spin"/>}
-                      </span>
+                    <div key={item.memberId}>
+                      <div className="px-4 py-2 grid grid-cols-12 gap-2 items-center text-sm">
+                        <span className="col-span-3 text-white/60 truncate">{item.teamName}</span>
+                        <span className="col-span-3 text-white font-medium truncate">{item.memberName}</span>
+                        <span className={`col-span-2 text-xs font-medium ${TIER_COLOR[item.tier]}`}>{DEFAULT_TIERS[item.tier-1].label}</span>
+                        <span className="col-span-3 text-xs font-mono text-white/30 truncate">{item.wallet}</span>
+                        <span className="col-span-1 text-right text-sm">
+                          {l?.status==="ok"&&<span className="text-emerald-400">✓</span>}
+                          {l?.status==="err"&&<span className="text-red-400">✗</span>}
+                          {l?.status==="running"&&<span className="inline-block w-3 h-3 rounded-full border border-violet-400 border-t-transparent animate-spin"/>}
+                        </span>
+                      </div>
+                      {l?.status==="err"&&l.msg&&(
+                        <div className="px-4 pb-2 text-xs text-red-400/80 break-words">{l.msg}</div>
+                      )}
                     </div>);})}
                 </div>
               </div>
@@ -636,11 +704,11 @@ export default function AdminPage(){
                   <input type="checkbox" checked={mintConfirmed} onChange={e=>setMintConfirmed(e.target.checked)} className="mt-0.5 w-4 h-4 accent-violet-500"/>
                   <span className="text-sm" style={{color:"rgba(196,181,253,0.8)"}}>
                     I confirm wallet credentials, Pinata keys, and member wallets are correct.
-                    Ready to pre-mint <strong className="text-violet-200">{eligible.length} NFT{eligible.length!==1?"s":""}</strong> on <strong className="text-violet-200">{adminNetwork}</strong>.
+                    Ready to pre-mint <strong className="text-violet-200">{eligible.length} NFT{eligible.length!==1?"s":""}</strong> on <strong className="text-violet-200">{w.network}</strong>.
                     NFTs will be held in treasury until students claim them. Cannot be undone.
                   </span>
                 </label>
-                <button onClick={startBatchMint} disabled={!mintConfirmed||minting||!adminPrivateKey||!pinataKey}
+                <button onClick={startBatchMint} disabled={!mintConfirmed||minting||!w.isReady||!pinataKey}
                   className="w-full py-4 rounded-xl font-black text-white text-lg disabled:opacity-30 transition-all"
                   style={{background:"linear-gradient(135deg,#7c3aed,#c026d3)",boxShadow:"0 4px 0 #4c1d95, 0 6px 20px rgba(124,58,237,0.4)"}}
                   onMouseDown={e=>{if(!minting){(e.currentTarget as HTMLElement).style.transform="translateY(3px)";(e.currentTarget as HTMLElement).style.boxShadow="0 1px 0 #4c1d95";}}}

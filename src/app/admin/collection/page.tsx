@@ -716,7 +716,7 @@ function TierConfig(){
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 6 — Wallet Generator
 // ═══════════════════════════════════════════════════════════════════════════════
-function WalletGenerator({creds,network}:{creds:WalletCredentials|null;network:HederaNetwork}){
+function WalletGenerator({creds,network,onNetworkChange}:{creds:WalletCredentials|null;network:HederaNetwork;onNetworkChange:(n:HederaNetwork)=>void}){
   const[csvContent,setCsvContent]=useState("");
   const[initialHbar,setInitialHbar]=useState("1");
   const[generating,setGenerating]=useState(false);
@@ -818,6 +818,34 @@ function WalletGenerator({creds,network}:{creds:WalletCredentials|null;network:H
     <Card>
       <SectionHeader step={6} title="Student Wallet Generator" subtitle="Upload student names → creates Hedera accounts → printable wallet cards with HashPack setup instructions."/>
       <Flash msg={msg}/>
+
+      {/* Network toggle */}
+      <div className="mb-5 p-4 rounded-xl border" style={{background:"rgba(0,0,0,0.15)",borderColor:"var(--border)"}}>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-sm font-medium" style={{color:"var(--text-primary)"}}>Hedera Network</div>
+            <div className="text-xs mt-0.5" style={{color:"var(--text-faint)"}}>Wallets are created on this network — always test on testnet first</div>
+          </div>
+          <div className="flex rounded-xl overflow-hidden shrink-0" style={{border:"1px solid var(--border)"}}>
+            {(["testnet","mainnet"] as HederaNetwork[]).map(n=>(
+              <button key={n} onClick={()=>onNetworkChange(n)}
+                className="px-4 py-2 text-sm font-semibold capitalize transition-all"
+                style={{
+                  background:network===n?(n==="testnet"?"rgba(245,158,11,0.55)":"rgba(16,185,129,0.55)"):"var(--bg-card)",
+                  color:network===n?"white":"var(--text-faint)",
+                }}>
+                {n==="testnet"?"🧪 Testnet":"🌐 Mainnet"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {network==="mainnet"&&(
+          <div className="mt-3 p-2.5 rounded-lg text-xs" style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.35)",color:"rgb(252,165,165)"}}>
+            ⚠ MAINNET — wallets will use real HBAR. Make sure you've tested on testnet first.
+          </div>
+        )}
+      </div>
+
       <div className="mb-4 p-4 rounded-xl border" style={{background:"rgba(0,0,0,0.15)",borderColor:"var(--border)"}}>
         <div className="text-xs font-medium mb-1" style={{color:"var(--text-muted)"}}>CSV Format — one name per line:</div>
         <pre className="text-xs font-mono" style={{color:"var(--text-faint)"}}>{"Alice Johnson\nBob Smith\nCarla Reyes"}</pre>
@@ -1163,7 +1191,7 @@ export default function CollectionPage(){
           <TraitEditor onTraitsChange={setTraits}/>
         </>}
         {tab==="tiers"&&<TierConfig/>}
-        {tab==="wallets"&&<WalletGenerator creds={creds} network={wallet.network}/>}
+        {tab==="wallets"&&<WalletGenerator creds={creds} network={wallet.network} onNetworkChange={wallet.setNetwork}/>}
         {tab==="mint"&&<BatchMint creds={creds} traits={traits} network={wallet.network}/>}
       </div>
     </div>
